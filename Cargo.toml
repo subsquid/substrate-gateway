@@ -1,0 +1,13 @@
+[package]
+name = "archive-gateway-example"
+version = "0.1.0"
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+async-graphql = { version = "3.0.29", features = [ "chrono" ] }
+async-graphql-rocket = "3.0.29"
+rocket = "0.5.0-rc.1"
+sqlx = { version = "0.5.5", features = [ "runtime-tokio-rustls", "postgres", "macros", "chrono" ] }
+chrono = "0.4"

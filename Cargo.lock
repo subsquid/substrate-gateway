@@ -49,6 +49,7 @@ dependencies = [
  "async-graphql-rocket",
  "chrono",
  "rocket",
+ "serde_json",
  "sqlx",
 ]
 
@@ -1603,6 +1604,7 @@ version = "1.0.79"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "8e8d9fa5c3b304765ce1fd9c4c8a3de2c8db365a5b91be52f186efc675681d95"
 dependencies = [
+ "indexmap",
  "itoa",
  "ryu",
  "serde",
@@ -1799,6 +1801,7 @@ dependencies = [
  "once_cell",
  "proc-macro2",
  "quote",
+ "serde_json",
  "sha2",
  "sqlx-core",
  "sqlx-rt",

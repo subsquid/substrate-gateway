@@ -5,6 +5,7 @@ use async_graphql_rocket::{GraphQLRequest, GraphQLResponse};
 use rocket::{response::content, routes, State};
 use sqlx::postgres::PgPoolOptions;
 use graphql::QueryRoot;
+use graphql::loader::{ExtrinsicLoader, CallLoader, EventLoader};
 
 mod entities;
 mod graphql;
@@ -35,9 +36,9 @@ async fn main() {
         .await
         .unwrap();
 
-    let extrinsic_loader = DataLoader::new(graphql::ExtrinsicLoader {pool: pool.clone()}, tokio::task::spawn);
-    let call_loader = DataLoader::new(graphql::CallLoader {pool: pool.clone()}, tokio::task::spawn);
-    let event_loader = DataLoader::new(graphql::EventLoader {pool: pool.clone()}, tokio::task::spawn);
+    let extrinsic_loader = DataLoader::new(ExtrinsicLoader {pool: pool.clone()}, tokio::task::spawn);
+    let call_loader = DataLoader::new(CallLoader {pool: pool.clone()}, tokio::task::spawn);
+    let event_loader = DataLoader::new(EventLoader {pool: pool.clone()}, tokio::task::spawn);
     let schema = Schema::build(QueryRoot, EmptyMutation, EmptySubscription)
         .data(pool)
         .data(extrinsic_loader)

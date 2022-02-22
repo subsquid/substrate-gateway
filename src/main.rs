@@ -1,3 +1,4 @@
+use std::env;
 use async_graphql::{EmptyMutation, EmptySubscription, Schema};
 use async_graphql::http::{playground_source, GraphQLPlaygroundConfig};
 use async_graphql::dataloader::{DataLoader};
@@ -29,10 +30,10 @@ async fn graphql_request(
 
 #[rocket::main]
 async fn main() {
-    let database_url = "postgresql://postgres:postgres@localhost:29387/archive";
+    let database_url = env::var("DATABASE_URL").expect("DATABASE_URL env variable is required");
     let pool = PgPoolOptions::new()
         .max_connections(5)
-        .connect(database_url)
+        .connect(&database_url)
         .await
         .unwrap();
 

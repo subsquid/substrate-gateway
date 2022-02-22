@@ -1,4 +1,4 @@
-use crate::entities::{Block, BlockHeader, Extrinsic, Call, Event};
+use crate::entities::{Block, BlockHeader, Extrinsic, Call, Event, Metadata};
 use sqlx::{postgres::PgRow, Error, Pool, Postgres, Row};
 use async_graphql::InputObject;
 
@@ -154,4 +154,13 @@ pub async fn get_events(pool: &Pool<Postgres>, blocks: &[String]) -> Result<Vec<
         .fetch_all(pool)
         .await?;
     Ok(events)
+}
+
+
+pub async fn get_metadata(pool: &Pool<Postgres>) -> Result<Vec<Metadata>, Error> {
+    let query = "SELECT spec_version, block_height, block_hash, hex FROM metadata";
+    let metadata = sqlx::query_as::<_, Metadata>(query)
+        .fetch_all(pool)
+        .await?;
+    Ok(metadata)
 }

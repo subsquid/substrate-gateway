@@ -55,3 +55,12 @@ pub struct Event {
 pub struct Block {
     pub header: BlockHeader,
 }
+
+
+#[derive(sqlx::FromRow, SimpleObject, Debug)]
+pub struct Metadata {
+    spec_version: i32,
+    block_height: i32,
+    block_hash: String,
+    hex: String,
+}

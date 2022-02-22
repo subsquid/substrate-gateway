@@ -1,5 +1,5 @@
-use crate::entities::{Block, BlockHeader, Extrinsic, Call, Event};
-use crate::repository::{get_blocks, EventSelection, CallSelection};
+use crate::entities::{Block, BlockHeader, Extrinsic, Call, Event, Metadata};
+use crate::repository::{get_blocks, get_metadata, EventSelection, CallSelection};
 use async_graphql::{Context, Object, Result};
 use async_graphql::dataloader::DataLoader;
 use loader::{ExtrinsicLoader, CallLoader, EventLoader};
@@ -57,5 +57,10 @@ impl QueryRoot {
     ) -> Result<Vec<Block>> {
         let pool = ctx.data::<sqlx::Pool<sqlx::Postgres>>()?;
         Ok(get_blocks(pool, limit, from_block, to_block, events, calls, include_all_blocks).await?)
+    }
+
+    async fn metadata(&self, ctx: &Context<'_>) -> Result<Vec<Metadata>> {
+        let pool = ctx.data::<sqlx::Pool<sqlx::Postgres>>()?;
+        Ok(get_metadata(&pool).await?)
     }
 }

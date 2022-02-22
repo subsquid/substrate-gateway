@@ -64,3 +64,9 @@ pub struct Metadata {
     block_hash: String,
     hex: String,
 }
+
+
+#[derive(sqlx::FromRow, SimpleObject, Debug)]
+pub struct Status {
+    pub head: i32,
+}

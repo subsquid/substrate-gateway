@@ -1,4 +1,4 @@
-use crate::entities::{Block, BlockHeader, Extrinsic, Call, Event, Metadata};
+use crate::entities::{Block, BlockHeader, Extrinsic, Call, Event, Metadata, Status};
 use sqlx::{postgres::PgRow, Error, Pool, Postgres, Row};
 use async_graphql::InputObject;
 
@@ -163,4 +163,13 @@ pub async fn get_metadata(pool: &Pool<Postgres>) -> Result<Vec<Metadata>, Error>
         .fetch_all(pool)
         .await?;
     Ok(metadata)
+}
+
+
+pub async fn get_status(pool: &Pool<Postgres>) -> Result<Status, Error> {
+    let query = "SELECT height as head FROM block ORDER BY height DESC LIMIT 1";
+    let status = sqlx::query_as::<_, Status>(query)
+        .fetch_one(pool)
+        .await?;
+    Ok(status)
 }

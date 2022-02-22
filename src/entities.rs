@@ -20,7 +20,7 @@ pub struct Extrinsic {
     pub name: String,
     pub signature: Option<serde_json::Value>,
     pub success: bool,
-    pub hash: Vec<u8>,
+    pub hash: String,
 }
 
 

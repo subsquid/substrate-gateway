@@ -23,6 +23,7 @@ pub struct CallFields {
     _all: Option<bool>,
     id: Option<bool>,
     extrinsic: Option<ExtrinsicFields>,
+    parent_id: Option<bool>,
     parent: Option<bool>,
     success: Option<bool>,
     name: Option<bool>,
@@ -30,7 +31,7 @@ pub struct CallFields {
 }
 
 
-#[derive(InputObject)]
+#[derive(InputObject, Clone)]
 pub struct EventFields {
     #[graphql(name="_all")]
     _all: Option<bool>,
@@ -40,12 +41,13 @@ pub struct EventFields {
     phase: Option<bool>,
     extrinsic: Option<ExtrinsicFields>,
     call_id: Option<bool>,
+    call: Option<CallFields>,
     name: Option<bool>,
     args: Option<bool>,
 }
 
 
-#[derive(InputObject)]
+#[derive(InputObject, Clone)]
 pub struct EventSelection {
     name: String,
     fields: EventFields,
@@ -65,7 +67,7 @@ pub async fn get_blocks(
     from_block: i32,
     to_block: Option<i32>,
     events: Option<Vec<EventSelection>>,
-    calls: &Option<Vec<CallSelection>>,
+    calls: Option<Vec<CallSelection>>,
     include_all_blocks: Option<bool>
 ) -> Result<Vec<Block>, Error> {
     let mut events_name: Option<Vec<String>> = None;
@@ -127,10 +129,32 @@ pub async fn get_extrinsics(pool: &Pool<Postgres>, blocks: &[String]) -> Result<
 }
 
 
-pub async fn get_calls(pool: &Pool<Postgres>, blocks: &[String], selections: &[CallSelection]) -> Result<Vec<Call>, Error> {
-    let calls_name: Vec<String> = selections.iter()
-        .map(|selection| selection.name.clone())
-        .collect();
+pub async fn get_calls(
+    pool: &Pool<Postgres>,
+    blocks: &[String],
+    call_selections: &Option<Vec<CallSelection>>,
+    event_selections: &Option<Vec<EventSelection>>,
+) -> Result<Vec<Call>, Error> {
+    let calls_name = call_selections.as_ref().and_then(|call_selections| {
+        Some(call_selections.iter()
+            .map(|selection| selection.name.clone())
+            .collect::<Vec<String>>())
+    });
+    let events_name = event_selections.as_ref().and_then(|event_selections| {
+        Some(event_selections.iter()
+            .filter_map(|selection| {
+                if let Some(_all) = &selection.fields._all {
+                    return Some(selection.name.clone());
+                }
+                if let Some(_call) = &selection.fields.call {
+                    return Some(selection.name.clone());
+                }
+                None
+            })
+            .collect::<Vec<String>>())
+    });
+    println!("{:?}", &calls_name);
+    println!("{:?}", &events_name);
     let query = "WITH RECURSIVE child_call AS (
             SELECT
                 call.id,
@@ -143,7 +167,10 @@ pub async fn get_calls(pool: &Pool<Postgres>, blocks: &[String], selections: &[C
                 extrinsic.block_id
             FROM call
             INNER JOIN extrinsic ON call.extrinsic_id = extrinsic.id
-            WHERE extrinsic.block_id = ANY($1::char(16)[]) AND call.name = ANY($2)
+            WHERE extrinsic.block_id = ANY($1::char(16)[])
+                AND (call.name = ANY($2) OR EXISTS (
+                    SELECT 1 FROM event WHERE event.block_id = extrinsic.block_id AND event.name = ANY($3)
+                ))
         UNION
             SELECT
                 call.id,
@@ -159,6 +186,7 @@ pub async fn get_calls(pool: &Pool<Postgres>, blocks: &[String], selections: &[C
     let calls = sqlx::query_as::<_, Call>(query)
         .bind(&blocks)
         .bind(&calls_name)
+        .bind(&events_name)
         .fetch_all(pool)
         .await?;
 

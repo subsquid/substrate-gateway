@@ -11,12 +11,12 @@ pub mod loader;
 
 
 struct BlockContext {
-    call_loader: Option<DataLoader<CallLoader>>,
+    call_loader: DataLoader<CallLoader>,
 }
 
 
 impl BlockContext {
-    fn new(call_loader: Option<DataLoader<CallLoader>>) -> Self {
+    fn new(call_loader: DataLoader<CallLoader>) -> Self {
         Self {
             call_loader,
         }
@@ -56,8 +56,6 @@ impl BlockObject {
 
     async fn calls(&self, _ctx: &Context<'_>) -> Result<Vec<Call>> {
         let calls = self.context.call_loader
-            .as_ref()
-            .unwrap()
             .load_one(self.block.header.id.clone())
             .await?
             .unwrap_or_else(Vec::new);
@@ -90,12 +88,12 @@ impl QueryRoot {
         include_all_blocks: Option<bool>,
     ) -> Result<Vec<BlockObject>> {
         let pool = ctx.data::<Pool<Postgres>>()?;
-        let call_loader = calls.as_ref().and_then(|calls| {
-            let loader = CallLoader::new(pool.clone(), calls.clone());
-            Some(DataLoader::new(loader, actix_web::rt::spawn))
-        });
+        let call_loader = DataLoader::new(
+            CallLoader::new(pool.clone(), calls.clone(), events.clone()),
+            actix_web::rt::spawn
+        );
         let block_context = Arc::new(BlockContext::new(call_loader));
-        let blocks = get_blocks(pool, limit, from_block, to_block, events, &calls, include_all_blocks)
+        let blocks = get_blocks(pool, limit, from_block, to_block, events, calls, include_all_blocks)
             .await?
             .into_iter()
             .map(|block| BlockObject::new(block, block_context.clone()))

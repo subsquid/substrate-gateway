@@ -1,5 +1,5 @@
 use crate::entities::{Extrinsic, Call, Event};
-use crate::repository::{get_extrinsics, get_calls, get_events};
+use crate::repository::{get_extrinsics, get_calls, get_events, CallSelection};
 use std::collections::HashMap;
 use async_graphql::FieldError;
 use async_graphql::dataloader::Loader;
@@ -29,6 +29,17 @@ impl Loader<String> for ExtrinsicLoader {
 
 pub struct CallLoader {
     pub pool: Pool<Postgres>,
+    pub selections: Vec<CallSelection>,
+}
+
+
+impl CallLoader {
+    pub fn new(pool: Pool<Postgres>, selections: Vec<CallSelection>) -> Self {
+        Self {
+            pool,
+            selections,
+        }
+    }
 }
 
 
@@ -38,8 +49,8 @@ impl Loader<String> for CallLoader {
     type Error = FieldError;
 
     async fn load(&self, keys: &[String]) -> Result<HashMap<String, Self::Value>, Self::Error> {
-        let calls = get_calls(&self.pool, keys).await?;
         let mut map = HashMap::new();
+        let calls = get_calls(&self.pool, keys, &self.selections).await?;
         for call in calls {
             let block_calls = map.entry(call.block_id.clone()).or_insert_with(Vec::new);
             block_calls.push(call);

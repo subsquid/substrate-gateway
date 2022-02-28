@@ -1,9 +1,10 @@
 use crate::entities::{Block, BlockHeader, Extrinsic, Call, Event, Metadata, Status};
+use std::collections::HashMap;
 use sqlx::{postgres::PgRow, Error, Pool, Postgres, Row};
 use async_graphql::InputObject;
 
 
-#[derive(InputObject)]
+#[derive(InputObject, Clone)]
 pub struct ExtrinsicFields {
     #[graphql(name="_all")]
     _all: Option<bool>,
@@ -17,7 +18,7 @@ pub struct ExtrinsicFields {
 }
 
 
-#[derive(InputObject)]
+#[derive(InputObject, Clone)]
 pub struct CallFields {
     #[graphql(name="_all")]
     _all: Option<bool>,
@@ -52,7 +53,7 @@ pub struct EventSelection {
 }
 
 
-#[derive(InputObject)]
+#[derive(InputObject, Clone)]
 pub struct CallSelection {
     name: String,
     fields: CallFields,
@@ -65,7 +66,7 @@ pub async fn get_blocks(
     from_block: i32,
     to_block: Option<i32>,
     events: Option<Vec<EventSelection>>,
-    calls: Option<Vec<CallSelection>>,
+    calls: &Option<Vec<CallSelection>>,
     include_all_blocks: Option<bool>
 ) -> Result<Vec<Block>, Error> {
     let mut events_name: Option<Vec<String>> = None;
@@ -127,23 +128,68 @@ pub async fn get_extrinsics(pool: &Pool<Postgres>, blocks: &[String]) -> Result<
 }
 
 
-pub async fn get_calls(pool: &Pool<Postgres>, blocks: &[String]) -> Result<Vec<Call>, Error> {
-    let query = "SELECT
-            call.id,
-            call.index,
-            call.extrinsic_id,
-            call.parent_id,
-            call.success,
-            call.name,
-            call.args,
-            extrinsic.block_id
-        FROM call INNER JOIN extrinsic ON call.extrinsic_id = extrinsic.id
-        WHERE extrinsic.block_id = ANY($1)";
-    let calls = sqlx::query_as::<_, Call>(query)
-        .bind(blocks)
+pub async fn get_calls(pool: &Pool<Postgres>, blocks: &[String], selections: &[CallSelection]) -> Result<Vec<Call>, Error> {
+    let calls_name: Vec<String> = selections.iter()
+        .map(|selection| selection.name.clone())
+        .collect();
+    println!("get calls");
+    let query = "WITH RECURSIVE child_call AS (
+            SELECT
+                call.id,
+                call.index,
+                call.extrinsic_id,
+                call.parent_id,
+                call.success,
+                call.name,
+                call.args,
+                extrinsic.block_id
+            FROM call
+            INNER JOIN extrinsic ON call.extrinsic_id = extrinsic.id
+            WHERE extrinsic.block_id = ANY($1) AND call.name = ANY($2)
+        UNION
+            SELECT
+                call.id,
+                call.index,
+                call.extrinsic_id,
+                call.parent_id,
+                call.success,
+                call.name,
+                call.args,
+                child_call.block_id
+            FROM call INNER JOIN child_call ON child_call.parent_id = call.id
+        ) SELECT * FROM child_call";
+    let calls: HashMap<String, Call> = sqlx::query_as::<_, Call>(query)
+        .bind(&blocks)
+        .bind(&calls_name)
         .fetch_all(pool)
-        .await?;
-    Ok(calls)
+        .await?
+        .into_iter()
+        .map(|call| {
+            (call.id.clone(), call)
+        })
+        .collect();
+
+    let mut recursive_calls = Vec::new();
+    for call in calls.values() {
+        if calls_name.contains(&call.name) {
+            let mut recursive_call = call.clone();
+            let mut stack: Vec<Call> = Vec::new();
+            let mut current_call = &recursive_call;
+            while current_call.parent_id.is_some() {
+                current_call = calls.get(current_call.parent_id.as_ref().unwrap()).unwrap();
+                stack.push(current_call.clone());
+            }
+            let mut parent: Option<serde_json::Value> = None;
+            while let Some(mut top) = stack.pop() {
+                top.parent = parent;
+                parent = Some(serde_json::to_value(&top).unwrap());
+            }
+            recursive_call.parent = parent;
+            recursive_calls.push(recursive_call);
+        }
+    }
+
+    Ok(recursive_calls)
 }
 
 

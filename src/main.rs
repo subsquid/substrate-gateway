@@ -8,7 +8,7 @@ use actix_web::guard::{Get, Post};
 use actix_web::web::{Data, resource};
 use sqlx::postgres::PgPoolOptions;
 use graphql::QueryRoot;
-use graphql::loader::{ExtrinsicLoader, CallLoader, EventLoader};
+use graphql::loader::{ExtrinsicLoader, EventLoader};
 
 mod entities;
 mod graphql;
@@ -39,12 +39,10 @@ async fn main() -> std::io::Result<()> {
         .unwrap();
 
     let extrinsic_loader = DataLoader::new(ExtrinsicLoader {pool: pool.clone()}, actix_web::rt::spawn);
-    let call_loader = DataLoader::new(CallLoader {pool: pool.clone()}, actix_web::rt::spawn);
     let event_loader = DataLoader::new(EventLoader {pool: pool.clone()}, actix_web::rt::spawn);
     let schema = Schema::build(QueryRoot, EmptyMutation, EmptySubscription)
         .data(pool)
         .data(extrinsic_loader)
-        .data(call_loader)
         .data(event_loader)
         .finish();
     HttpServer::new(move || {

@@ -119,7 +119,7 @@ pub async fn get_blocks(
 
 
 pub async fn get_extrinsics(pool: &Pool<Postgres>, blocks: &[String]) -> Result<Vec<Extrinsic>, Error> {
-    let query = "SELECT id, block_id, index_in_block, name, signature, success, hash FROM extrinsic WHERE block_id = ANY($1)";
+    let query = "SELECT id, block_id, index_in_block, name, signature, success, hash FROM extrinsic WHERE block_id = ANY($1::char(16)[])";
     let extrinsics = sqlx::query_as::<_, Extrinsic>(query)
         .bind(blocks)
         .fetch_all(pool)
@@ -132,7 +132,6 @@ pub async fn get_calls(pool: &Pool<Postgres>, blocks: &[String], selections: &[C
     let calls_name: Vec<String> = selections.iter()
         .map(|selection| selection.name.clone())
         .collect();
-    println!("get calls");
     let query = "WITH RECURSIVE child_call AS (
             SELECT
                 call.id,
@@ -145,7 +144,7 @@ pub async fn get_calls(pool: &Pool<Postgres>, blocks: &[String], selections: &[C
                 extrinsic.block_id
             FROM call
             INNER JOIN extrinsic ON call.extrinsic_id = extrinsic.id
-            WHERE extrinsic.block_id = ANY($1) AND call.name = ANY($2)
+            WHERE extrinsic.block_id = ANY($1::char(16)[]) AND call.name = ANY($2)
         UNION
             SELECT
                 call.id,
@@ -194,7 +193,7 @@ pub async fn get_calls(pool: &Pool<Postgres>, blocks: &[String], selections: &[C
 
 
 pub async fn get_events(pool: &Pool<Postgres>, blocks: &[String]) -> Result<Vec<Event>, Error> {
-    let query = "SELECT id, block_id, index_in_block, phase, extrinsic_id, call_id, name, args FROM event WHERE block_id = ANY($1)";
+    let query = "SELECT id, block_id, index_in_block, phase, extrinsic_id, call_id, name, args FROM event WHERE block_id = ANY($1::char(16)[])";
     let events = sqlx::query_as::<_, Event>(query)
         .bind(blocks)
         .fetch_all(pool)

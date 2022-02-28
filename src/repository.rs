@@ -1,5 +1,4 @@
 use crate::entities::{Block, BlockHeader, Extrinsic, Call, Event, Metadata, Status};
-use std::collections::HashMap;
 use sqlx::{postgres::PgRow, Error, Pool, Postgres, Row};
 use async_graphql::InputObject;
 
@@ -157,38 +156,13 @@ pub async fn get_calls(pool: &Pool<Postgres>, blocks: &[String], selections: &[C
                 child_call.block_id
             FROM call INNER JOIN child_call ON child_call.parent_id = call.id
         ) SELECT * FROM child_call";
-    let calls: HashMap<String, Call> = sqlx::query_as::<_, Call>(query)
+    let calls = sqlx::query_as::<_, Call>(query)
         .bind(&blocks)
         .bind(&calls_name)
         .fetch_all(pool)
-        .await?
-        .into_iter()
-        .map(|call| {
-            (call.id.clone(), call)
-        })
-        .collect();
+        .await?;
 
-    let mut recursive_calls = Vec::new();
-    for call in calls.values() {
-        if calls_name.contains(&call.name) {
-            let mut recursive_call = call.clone();
-            let mut stack: Vec<Call> = Vec::new();
-            let mut current_call = &recursive_call;
-            while current_call.parent_id.is_some() {
-                current_call = calls.get(current_call.parent_id.as_ref().unwrap()).unwrap();
-                stack.push(current_call.clone());
-            }
-            let mut parent: Option<serde_json::Value> = None;
-            while let Some(mut top) = stack.pop() {
-                top.parent = parent;
-                parent = Some(serde_json::to_value(&top).unwrap());
-            }
-            recursive_call.parent = parent;
-            recursive_calls.push(recursive_call);
-        }
-    }
-
-    Ok(recursive_calls)
+    Ok(calls)
 }
 
 

@@ -1,6 +1,5 @@
 use async_graphql::SimpleObject;
 use chrono::{DateTime, Utc};
-use serde::{Serialize, Deserialize};
 
 
 #[derive(SimpleObject, Debug)]
@@ -25,16 +24,12 @@ pub struct Extrinsic {
 }
 
 
-#[derive(sqlx::FromRow, SimpleObject, Clone, Debug, Serialize, Deserialize)]
+#[derive(sqlx::FromRow, SimpleObject, Clone, Debug)]
 pub struct Call {
     pub id: String,
     pub index: i32,
     pub extrinsic_id: String,
-    #[graphql(skip)]
-    #[serde(skip_serializing)]
     pub parent_id: Option<String>,
-    #[sqlx(default)]
-    pub parent: Option<serde_json::Value>,
     pub success: bool,
     pub name: String,
     pub args: Option<serde_json::Value>,

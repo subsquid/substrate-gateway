@@ -12,13 +12,15 @@ pub mod loader;
 
 struct BlockContext {
     call_loader: DataLoader<CallLoader>,
+    extrinsic_loader: DataLoader<ExtrinsicLoader>,
 }
 
 
 impl BlockContext {
-    fn new(call_loader: DataLoader<CallLoader>) -> Self {
+    fn new(call_loader: DataLoader<CallLoader>, extrinsic_loader: DataLoader<ExtrinsicLoader>) -> Self {
         Self {
             call_loader,
+            extrinsic_loader,
         }
     }
 }
@@ -46,9 +48,9 @@ impl BlockObject {
         &self.block.header
     }
 
-    async fn extrinsics(&self, ctx: &Context<'_>) -> Result<Vec<Extrinsic>> {
-        let loader = ctx.data::<DataLoader<ExtrinsicLoader>>()?;
-        let extrinsics = loader.load_one(self.block.header.id.clone())
+    async fn extrinsics(&self, _ctx: &Context<'_>) -> Result<Vec<Extrinsic>> {
+        let extrinsics = self.context.extrinsic_loader
+            .load_one(self.block.header.id.clone())
             .await?
             .unwrap_or_else(Vec::new);
         Ok(extrinsics)
@@ -92,7 +94,11 @@ impl QueryRoot {
             CallLoader::new(pool.clone(), calls.clone(), events.clone()),
             actix_web::rt::spawn
         );
-        let block_context = Arc::new(BlockContext::new(call_loader));
+        let extrinsic_loader = DataLoader::new(
+            ExtrinsicLoader::new(pool.clone(), calls.clone(), events.clone()),
+            actix_web::rt::spawn
+        );
+        let block_context = Arc::new(BlockContext::new(call_loader, extrinsic_loader));
         let blocks = get_blocks(pool, limit, from_block, to_block, events, calls, include_all_blocks)
             .await?
             .into_iter()

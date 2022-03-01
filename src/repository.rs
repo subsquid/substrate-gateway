@@ -119,10 +119,60 @@ pub async fn get_blocks(
 }
 
 
-pub async fn get_extrinsics(pool: &Pool<Postgres>, blocks: &[String]) -> Result<Vec<Extrinsic>, Error> {
-    let query = "SELECT id, block_id, index_in_block, name, signature, success, hash FROM extrinsic WHERE block_id = ANY($1::char(16)[])";
+pub async fn get_extrinsics(
+    pool: &Pool<Postgres>,
+    blocks: &[String],
+    call_selections: &Option<Vec<CallSelection>>,
+    event_selections: &Option<Vec<EventSelection>>,
+) -> Result<Vec<Extrinsic>, Error> {
+    let calls_name = call_selections.as_ref().and_then(|call_selections| {
+        Some(call_selections.iter()
+            .filter_map(|selection| {
+                if let Some(all) = &selection.fields._all {
+                    if *all {
+                        return Some(selection.name.clone());
+                    }
+                }
+                if let Some(_extrinsic) = &selection.fields.extrinsic {
+                    return Some(selection.name.clone());
+                }
+                None
+            })
+            .collect::<Vec<String>>())
+    });
+    let events_name = event_selections.as_ref().and_then(|event_selections| {
+        Some(event_selections.iter()
+            .filter_map(|selection| {
+                if let Some(all) = &selection.fields._all {
+                    if *all {
+                        return Some(selection.name.clone());
+                    }
+                }
+                if let Some(_extrinsic) = &selection.fields.extrinsic {
+                    return Some(selection.name.clone());
+                }
+                None
+            })
+            .collect::<Vec<String>>())
+    });
+    let query = "SELECT
+            id,
+            block_id,
+            index_in_block,
+            name,
+            signature,
+            success,
+            hash
+        FROM extrinsic
+        WHERE block_id = ANY($1::char(16)[])
+            AND (
+                EXISTS (SELECT 1 FROM call WHERE call.extrinsic_id = extrinsic.id AND call.name = ANY($2))
+                OR EXISTS (SELECT 1 FROM event WHERE event.extrinsic_id = extrinsic.id AND event.name = ANY($3))
+            )";
     let extrinsics = sqlx::query_as::<_, Extrinsic>(query)
         .bind(blocks)
+        .bind(calls_name)
+        .bind(events_name)
         .fetch_all(pool)
         .await?;
     Ok(extrinsics)
@@ -153,8 +203,6 @@ pub async fn get_calls(
             })
             .collect::<Vec<String>>())
     });
-    println!("{:?}", &calls_name);
-    println!("{:?}", &events_name);
     let query = "WITH RECURSIVE child_call AS (
             SELECT
                 call.id,

@@ -8,7 +8,25 @@ use sqlx::{Pool, Postgres};
 
 pub struct ExtrinsicLoader {
     pub pool: Pool<Postgres>,
+    pub call_selections: Option<Vec<CallSelection>>,
+    pub event_selections: Option<Vec<EventSelection>>,
 }
+
+
+impl ExtrinsicLoader {
+    pub fn new(
+        pool: Pool<Postgres>,
+        call_selections: Option<Vec<CallSelection>>,
+        event_selections: Option<Vec<EventSelection>>,
+    ) -> Self {
+        Self {
+            pool,
+            call_selections,
+            event_selections,
+        }
+    }
+}
+
 
 #[async_trait::async_trait]
 impl Loader<String> for ExtrinsicLoader {
@@ -16,7 +34,7 @@ impl Loader<String> for ExtrinsicLoader {
     type Error = FieldError;
 
     async fn load(&self, keys: &[String]) -> Result<HashMap<String, Self::Value>, Self::Error> {
-        let extrinsics = get_extrinsics(&self.pool, keys).await?;
+        let extrinsics = get_extrinsics(&self.pool, keys, &self.call_selections, &self.event_selections).await?;
         let mut map = HashMap::new();
         for extrinsic in extrinsics {
             let block_extrinsics = map.entry(extrinsic.block_id.clone()).or_insert_with(Vec::new);

@@ -7,9 +7,9 @@ use sqlx::{Pool, Postgres};
 
 
 pub struct ExtrinsicLoader {
-    pub pool: Pool<Postgres>,
-    pub call_selections: Option<Vec<CallSelection>>,
-    pub event_selections: Option<Vec<EventSelection>>,
+    pool: Pool<Postgres>,
+    call_selections: Option<Vec<CallSelection>>,
+    event_selections: Option<Vec<EventSelection>>,
 }
 
 
@@ -46,9 +46,9 @@ impl Loader<String> for ExtrinsicLoader {
 
 
 pub struct CallLoader {
-    pub pool: Pool<Postgres>,
-    pub call_selections: Option<Vec<CallSelection>>,
-    pub event_selections: Option<Vec<EventSelection>>,
+    pool: Pool<Postgres>,
+    call_selections: Option<Vec<CallSelection>>,
+    event_selections: Option<Vec<EventSelection>>,
 }
 
 
@@ -85,7 +85,21 @@ impl Loader<String> for CallLoader {
 
 
 pub struct EventLoader {
-    pub pool: Pool<Postgres>,
+    pool: Pool<Postgres>,
+    event_selections: Option<Vec<EventSelection>>,
+}
+
+
+impl EventLoader {
+    pub fn new(
+        pool: Pool<Postgres>,
+        event_selections: Option<Vec<EventSelection>>,
+    ) -> Self {
+        Self {
+            pool,
+            event_selections,
+        }
+    }
 }
 
 
@@ -95,7 +109,7 @@ impl Loader<String> for EventLoader {
     type Error = FieldError;
 
     async fn load(&self, keys: &[String]) -> Result<HashMap<String, Self::Value>, Self::Error> {
-        let events = get_events(&self.pool, keys).await?;
+        let events = get_events(&self.pool, keys, &self.event_selections).await?;
         let mut map = HashMap::new();
         for event in events {
             let block_events = map.entry(event.block_id.clone()).or_insert_with(Vec::new);

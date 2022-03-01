@@ -242,10 +242,30 @@ pub async fn get_calls(
 }
 
 
-pub async fn get_events(pool: &Pool<Postgres>, blocks: &[String]) -> Result<Vec<Event>, Error> {
-    let query = "SELECT id, block_id, index_in_block, phase, extrinsic_id, call_id, name, args FROM event WHERE block_id = ANY($1::char(16)[])";
+pub async fn get_events(
+    pool: &Pool<Postgres>,
+    blocks: &[String],
+    event_selections: &Option<Vec<EventSelection>>
+) -> Result<Vec<Event>, Error> {
+    let events_name = event_selections.as_ref().and_then(|event_selections| {
+        Some(event_selections.iter()
+            .map(|selection| selection.name.clone())
+            .collect::<Vec<String>>())
+    });
+    let query = "SELECT
+            id,
+            block_id,
+            index_in_block,
+            phase,
+            extrinsic_id,
+            call_id,
+            name,
+            args
+        FROM event
+        WHERE block_id = ANY($1::char(16)[]) AND name = ANY($2)";
     let events = sqlx::query_as::<_, Event>(query)
         .bind(blocks)
+        .bind(events_name)
         .fetch_all(pool)
         .await?;
     Ok(events)

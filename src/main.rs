@@ -1,7 +1,6 @@
 use std::env;
 use async_graphql::{EmptyMutation, EmptySubscription, Schema};
 use async_graphql::http::{playground_source, GraphQLPlaygroundConfig};
-use async_graphql::dataloader::{DataLoader};
 use async_graphql_actix_web::{GraphQLRequest, GraphQLResponse};
 use actix_web::{Result, HttpResponse, App, HttpServer};
 use actix_web::guard::{Get, Post};
@@ -9,7 +8,6 @@ use actix_web::web::{Data, resource};
 use actix_web::middleware::Logger;
 use sqlx::postgres::PgPoolOptions;
 use graphql::QueryRoot;
-use graphql::loader::EventLoader;
 
 mod entities;
 mod graphql;
@@ -41,10 +39,8 @@ async fn main() -> std::io::Result<()> {
         .await
         .unwrap();
 
-    let event_loader = DataLoader::new(EventLoader {pool: pool.clone()}, actix_web::rt::spawn);
     let schema = Schema::build(QueryRoot, EmptyMutation, EmptySubscription)
         .data(pool)
-        .data(event_loader)
         .finish();
     HttpServer::new(move || {
         App::new()

@@ -6,6 +6,7 @@ use async_graphql_actix_web::{GraphQLRequest, GraphQLResponse};
 use actix_web::{Result, HttpResponse, App, HttpServer};
 use actix_web::guard::{Get, Post};
 use actix_web::web::{Data, resource};
+use actix_web::middleware::Logger;
 use sqlx::postgres::PgPoolOptions;
 use graphql::QueryRoot;
 use graphql::loader::{ExtrinsicLoader, EventLoader};
@@ -31,6 +32,8 @@ async fn graphql_request(
 
 #[actix_web::main]
 async fn main() -> std::io::Result<()> {
+    env_logger::init();
+
     let database_url = env::var("DATABASE_URL").expect("DATABASE_URL env variable is required");
     let pool = PgPoolOptions::new()
         .max_connections(5)
@@ -48,6 +51,7 @@ async fn main() -> std::io::Result<()> {
     HttpServer::new(move || {
         App::new()
             .app_data(Data::new(schema.clone()))
+            .wrap(Logger::default())
             .service(resource("/").guard(Get()).to(graphql_playground))
             .service(resource("/graphql").guard(Post()).to(graphql_request))
     })

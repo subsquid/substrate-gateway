@@ -32,9 +32,14 @@ async fn graphql_request(
 async fn main() -> std::io::Result<()> {
     env_logger::init();
 
-    let database_url = env::var("DATABASE_URL").expect("DATABASE_URL env variable is required");
+    let database_url = env::var("DATABASE_URL")
+        .expect("DATABASE_URL env variable is required");
+    let max_connections = env::var("DATABASE_MAX_CONNECTIONS")
+        .expect("DATABASE_MAX_CONNECTIONS env variable is required")
+        .parse::<u32>()
+        .unwrap();
     let pool = PgPoolOptions::new()
-        .max_connections(5)
+        .max_connections(max_connections)
         .connect(&database_url)
         .await
         .unwrap();

@@ -70,14 +70,12 @@ pub async fn get_blocks(
     calls: Option<Vec<CallSelection>>,
     include_all_blocks: Option<bool>
 ) -> Result<Vec<Block>, Error> {
-    let mut events_name: Option<Vec<String>> = None;
-    let mut calls_name: Option<Vec<String>> = None;
-    if let Some(events) = events {
-        events_name = Some(events.iter().map(|selection| selection.name.clone()).collect());
-    }
-    if let Some(calls) = calls {
-        calls_name = Some(calls.iter().map(|selection| selection.name.clone()).collect());
-    }
+    let events_name: Option<Vec<String>> = events.and_then(|events| {
+        Some(events.iter().map(|selection| selection.name.clone()).collect())
+    });
+    let calls_name: Option<Vec<String>> = calls.and_then(|calls| {
+        Some(calls.iter().map(|selection| selection.name.clone()).collect())
+    });
     let query = "SELECT
             id,
             height,
@@ -143,6 +141,7 @@ pub async fn get_extrinsics(
     let events_name = event_selections.as_ref().and_then(|event_selections| {
         Some(event_selections.iter()
             .filter_map(|selection| {
+                // TODO: handle EventSelection.fields.call.extrinsic
                 if let Some(all) = &selection.fields._all {
                     if *all {
                         return Some(selection.name.clone());

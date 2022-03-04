@@ -7,6 +7,7 @@ mod entities;
 mod graphql;
 mod repository;
 mod server;
+mod metrics;
 
 
 #[actix_web::main]

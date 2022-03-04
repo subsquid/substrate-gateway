@@ -1,4 +1,5 @@
 use crate::graphql::QueryRoot;
+use crate::metrics::{HTTP_REQUESTS_TOTAL, HTTP_RESPONSE_TIME_SECONDS};
 use async_graphql::{EmptyMutation, EmptySubscription, Schema};
 use async_graphql::http::{playground_source, GraphQLPlaygroundConfig};
 use async_graphql_actix_web::{GraphQLRequest, GraphQLResponse};
@@ -6,6 +7,9 @@ use actix_web::{Result, HttpResponse, App, HttpServer};
 use actix_web::guard::{Get, Post};
 use actix_web::web::{Data, resource};
 use actix_web::middleware::Logger;
+use actix_web::http::header::ContentType;
+use actix_web::dev::Service;
+use prometheus::{TextEncoder, Encoder};
 
 
 async fn graphql_playground() -> Result<HttpResponse> {
@@ -22,13 +26,39 @@ async fn graphql_request(
 }
 
 
+async fn metrics() -> Result<HttpResponse, actix_web::Error> {
+    let encoder = TextEncoder::new();
+    let mut buffer = vec![];
+    encoder.encode(&prometheus::gather(), &mut buffer).expect("Failed to encode metrics");
+    let response = String::from_utf8(buffer.clone()).expect("Failed to convert bytes to string");
+    buffer.clear();
+    Ok(HttpResponse::Ok()
+        .insert_header(ContentType(mime::TEXT_PLAIN))
+        .body(response))
+}
+
+
 pub async fn run(schema: Schema<QueryRoot, EmptyMutation, EmptySubscription>) -> std::io::Result<()> {
     HttpServer::new(move || {
         App::new()
             .app_data(Data::new(schema.clone()))
             .wrap(Logger::default())
+            .wrap_fn(|req, srv| {
+                let request_path = req.path();
+                let request_method = req.method().to_string();
+                HTTP_REQUESTS_TOTAL.with_label_values(&[&request_method, request_path]).inc();
+                let histogram_timer = HTTP_RESPONSE_TIME_SECONDS.with_label_values(&[&request_method, request_path]).start_timer();
+
+                let fut = srv.call(req);
+                async {
+                    let res = fut.await?;
+                    histogram_timer.observe_duration();
+                    Ok(res)
+                }
+            })
             .service(resource("/").guard(Get()).to(graphql_playground))
             .service(resource("/graphql").guard(Post()).to(graphql_request))
+            .service(resource("/metrics").guard(Get()).to(metrics))
     })
     .bind("0.0.0.0:8000").unwrap()
     .run()

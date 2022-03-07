@@ -1,4 +1,4 @@
-use crate::entities::{Block, BlockHeader, Extrinsic, Call, Event, Metadata, Status};
+use crate::entities::{Block, BlockHeader, Metadata, Status};
 use crate::repository::{get_blocks, get_metadata, get_status, EventSelection, CallSelection};
 use std::sync::Arc;
 use sqlx::{Pool, Postgres};
@@ -54,27 +54,36 @@ impl BlockObject {
         &self.block.header
     }
 
-    async fn extrinsics(&self, _ctx: &Context<'_>) -> Result<Vec<Extrinsic>> {
+    async fn extrinsics(&self, _ctx: &Context<'_>) -> Result<Vec<serde_json::Value>> {
         let extrinsics = self.context.extrinsic_loader
             .load_one(self.block.header.id.clone())
             .await?
-            .unwrap_or_else(Vec::new);
+            .unwrap_or_else(Vec::new)
+            .iter()
+            .map(|extrinsic| serde_json::to_value(extrinsic).unwrap())
+            .collect();
         Ok(extrinsics)
     }
 
-    async fn calls(&self, _ctx: &Context<'_>) -> Result<Vec<Call>> {
+    async fn calls(&self, _ctx: &Context<'_>) -> Result<Vec<serde_json::Value>> {
         let calls = self.context.call_loader
             .load_one(self.block.header.id.clone())
             .await?
-            .unwrap_or_else(Vec::new);
+            .unwrap_or_else(Vec::new)
+            .iter()
+            .map(|call| serde_json::to_value(call).unwrap())
+            .collect();
         Ok(calls)
     }
 
-    async fn events(&self, _ctx: &Context<'_>) -> Result<Vec<Event>> {
+    async fn events(&self, _ctx: &Context<'_>) -> Result<Vec<serde_json::Value>> {
         let events = self.context.event_loader
             .load_one(self.block.header.id.clone())
             .await?
-            .unwrap_or_else(Vec::new);
+            .unwrap_or_else(Vec::new)
+            .iter()
+            .map(|event| serde_json::to_value(event).unwrap())
+            .collect();
         Ok(events)
     }
 }

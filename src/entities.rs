@@ -1,5 +1,6 @@
 use async_graphql::SimpleObject;
 use chrono::{DateTime, Utc};
+use serde::{Serialize, Deserialize};
 
 
 #[derive(SimpleObject, Debug)]
@@ -12,7 +13,7 @@ pub struct BlockHeader {
 }
 
 
-#[derive(sqlx::FromRow, SimpleObject, Clone, Debug)]
+#[derive(sqlx::FromRow, SimpleObject, Clone, Debug, Serialize, Deserialize)]
 pub struct Extrinsic {
     pub id: String,
     pub block_id: String,
@@ -24,7 +25,7 @@ pub struct Extrinsic {
 }
 
 
-#[derive(sqlx::FromRow, SimpleObject, Clone, Debug)]
+#[derive(sqlx::FromRow, SimpleObject, Clone, Debug, Serialize, Deserialize)]
 pub struct Call {
     pub id: String,
     pub index: i32,
@@ -38,7 +39,7 @@ pub struct Call {
 }
 
 
-#[derive(sqlx::FromRow, SimpleObject, Clone, Debug)]
+#[derive(sqlx::FromRow, SimpleObject, Clone, Debug, Serialize, Deserialize)]
 pub struct Event {
     pub id: String,
     pub block_id: String,

@@ -214,10 +214,21 @@ pub async fn get_calls(
                 extrinsic.block_id
             FROM call
             INNER JOIN extrinsic ON call.extrinsic_id = extrinsic.id
+            WHERE extrinsic.block_id = ANY($1::char(16)[]) AND call.name = ANY($2)
+            UNION
+            SELECT
+                call.id,
+                call.index,
+                call.extrinsic_id,
+                call.parent_id,
+                call.success,
+                call.name,
+                call.args,
+                extrinsic.block_id
+            FROM call
+            INNER JOIN extrinsic ON call.extrinsic_id = extrinsic.id
             WHERE extrinsic.block_id = ANY($1::char(16)[])
-                AND (call.name = ANY($2) OR EXISTS (
-                    SELECT 1 FROM event WHERE event.block_id = extrinsic.block_id AND event.name = ANY($3)
-                ))
+                AND EXISTS (SELECT 1 FROM event WHERE event.block_id = extrinsic.block_id AND event.name = ANY($3))
         UNION
             SELECT
                 call.id,

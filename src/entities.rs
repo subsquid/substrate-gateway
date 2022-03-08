@@ -1,6 +1,7 @@
 use async_graphql::SimpleObject;
 use chrono::{DateTime, Utc};
 use serde::{Serialize, Deserialize};
+use sqlx::FromRow;
 
 
 #[derive(SimpleObject, Debug)]
@@ -13,42 +14,90 @@ pub struct BlockHeader {
 }
 
 
-#[derive(sqlx::FromRow, SimpleObject, Clone, Debug, Serialize, Deserialize)]
+#[derive(FromRow, Clone, Debug, Serialize, Deserialize)]
 pub struct Extrinsic {
-    pub id: String,
-    pub block_id: String,
-    pub index_in_block: i32,
-    pub name: String,
+    #[sqlx(default)]
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub id: Option<String>,
+    #[sqlx(default)]
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub block_id: Option<String>,
+    #[sqlx(default)]
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub index_in_block: Option<i32>,
+    #[sqlx(default)]
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub name: Option<String>,
+    #[sqlx(default)]
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub signature: Option<serde_json::Value>,
-    pub success: bool,
-    pub hash: String,
+    #[sqlx(default)]
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub success: Option<bool>,
+    #[sqlx(default)]
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub hash: Option<String>,
+    #[serde(skip_serializing)]
+    pub _block_id: String,
 }
 
 
-#[derive(sqlx::FromRow, SimpleObject, Clone, Debug, Serialize, Deserialize)]
+#[derive(FromRow, Clone, Debug, Serialize, Deserialize)]
 pub struct Call {
-    pub id: String,
-    pub index: i32,
-    pub extrinsic_id: String,
+    #[sqlx(default)]
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub id: Option<String>,
+    #[sqlx(default)]
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub index: Option<i32>,
+    #[sqlx(default)]
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub extrinsic_id: Option<String>,
+    #[sqlx(default)]
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub parent_id: Option<String>,
-    pub success: bool,
-    pub name: String,
+    #[sqlx(default)]
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub success: Option<bool>,
+    #[sqlx(default)]
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub name: Option<String>,
+    #[sqlx(default)]
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub args: Option<serde_json::Value>,
-    #[graphql(skip)]
-    pub block_id: String,
+    #[serde(skip_serializing)]
+    pub _block_id: String,
 }
 
 
-#[derive(sqlx::FromRow, SimpleObject, Clone, Debug, Serialize, Deserialize)]
+#[derive(FromRow, Clone, Debug, Serialize, Deserialize)]
 pub struct Event {
-    pub id: String,
-    pub block_id: String,
-    pub index_in_block: i32,
-    pub phase: String,
+    #[sqlx(default)]
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub id: Option<String>,
+    #[sqlx(default)]
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub block_id: Option<String>,
+    #[sqlx(default)]
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub index_in_block: Option<i32>,
+    #[sqlx(default)]
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub phase: Option<String>,
+    #[sqlx(default)]
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub extrinsic_id: Option<String>,
+    #[sqlx(default)]
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub call_id: Option<String>,
-    pub name: String,
-    pub args: Option<serde_json::Value>
+    #[sqlx(default)]
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub name: Option<String>,
+    #[sqlx(default)]
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub args: Option<serde_json::Value>,
+    #[serde(skip_serializing)]
+    pub _block_id: String,
 }
 
 
@@ -58,7 +107,7 @@ pub struct Block {
 }
 
 
-#[derive(sqlx::FromRow, SimpleObject, Debug)]
+#[derive(FromRow, SimpleObject, Debug)]
 pub struct Metadata {
     spec_version: i32,
     block_height: i32,
@@ -67,7 +116,7 @@ pub struct Metadata {
 }
 
 
-#[derive(sqlx::FromRow, SimpleObject, Debug)]
+#[derive(FromRow, SimpleObject, Debug)]
 pub struct Status {
     pub head: i32,
 }

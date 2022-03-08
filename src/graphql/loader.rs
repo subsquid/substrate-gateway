@@ -37,7 +37,7 @@ impl Loader<String> for ExtrinsicLoader {
         let extrinsics = get_extrinsics(&self.pool, keys, &self.call_selections, &self.event_selections).await?;
         let mut map = HashMap::new();
         for extrinsic in extrinsics {
-            let block_extrinsics = map.entry(extrinsic.block_id.clone()).or_insert_with(Vec::new);
+            let block_extrinsics = map.entry(extrinsic._block_id.clone()).or_insert_with(Vec::new);
             block_extrinsics.push(extrinsic);
         }
         Ok(map)
@@ -76,7 +76,7 @@ impl Loader<String> for CallLoader {
         let mut map = HashMap::new();
         let calls = get_calls(&self.pool, keys, &self.call_selections, &self.event_selections).await?;
         for call in calls {
-            let block_calls = map.entry(call.block_id.clone()).or_insert_with(Vec::new);
+            let block_calls = map.entry(call._block_id.clone()).or_insert_with(Vec::new);
             block_calls.push(call);
         }
         Ok(map)
@@ -112,7 +112,7 @@ impl Loader<String> for EventLoader {
         let events = get_events(&self.pool, keys, &self.event_selections).await?;
         let mut map = HashMap::new();
         for event in events {
-            let block_events = map.entry(event.block_id.clone()).or_insert_with(Vec::new);
+            let block_events = map.entry(event._block_id.clone()).or_insert_with(Vec::new);
             block_events.push(event);
         }
         Ok(map)

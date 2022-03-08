@@ -22,8 +22,8 @@ pub struct CallFields {
     #[graphql(name="_all")]
     _all: Option<bool>,
     id: Option<bool>,
+    index: Option<bool>,
     extrinsic: Option<ExtrinsicFields>,
-    parent_id: Option<bool>,
     parent: Option<bool>,
     success: Option<bool>,
     name: Option<bool>,
@@ -40,7 +40,6 @@ pub struct EventFields {
     index_in_block: Option<bool>,
     phase: Option<bool>,
     extrinsic: Option<ExtrinsicFields>,
-    call_id: Option<bool>,
     call: Option<CallFields>,
     name: Option<bool>,
     args: Option<bool>,
@@ -154,21 +153,19 @@ pub async fn get_extrinsics(
             })
             .collect::<Vec<String>>())
     });
-    let query = "SELECT
-            id,
-            block_id,
-            index_in_block,
-            name,
-            signature,
-            success,
-            hash
+    let mut columns = get_extrinsics_columns(event_selections, call_selections);
+    columns.push("block_id AS _block_id".to_string());
+    let query = format!("SELECT
+            {columns}
         FROM extrinsic
         WHERE block_id = ANY($1::char(16)[])
             AND (
                 EXISTS (SELECT 1 FROM call WHERE call.extrinsic_id = extrinsic.id AND call.name = ANY($2))
                 OR EXISTS (SELECT 1 FROM event WHERE event.extrinsic_id = extrinsic.id AND event.name = ANY($3))
-            )";
-    let extrinsics = sqlx::query_as::<_, Extrinsic>(query)
+            )",
+        columns=columns.join(", ")
+    );
+    let extrinsics = sqlx::query_as::<_, Extrinsic>(&query)
         .bind(blocks)
         .bind(calls_name)
         .bind(events_name)
@@ -202,46 +199,34 @@ pub async fn get_calls(
             })
             .collect::<Vec<String>>())
     });
-    let query = "WITH RECURSIVE child_call AS (
+    let mut columns = get_calls_columns(call_selections);
+    let mut child_columns = columns.clone();
+    columns.push("extrinsic.block_id AS _block_id".to_string());
+    columns.push("call.parent_id AS _parent_id".to_string());
+    child_columns.push("child_call._block_id AS _block_id".to_string());
+    child_columns.push("child_call._parent_id AS _parent_id".to_string());
+    let query = format!("WITH RECURSIVE child_call AS (
             SELECT
-                call.id,
-                call.index,
-                call.extrinsic_id,
-                call.parent_id,
-                call.success,
-                call.name,
-                call.args,
-                extrinsic.block_id
+                {columns}
             FROM call
             INNER JOIN extrinsic ON call.extrinsic_id = extrinsic.id
             WHERE extrinsic.block_id = ANY($1::char(16)[]) AND call.name = ANY($2)
             UNION
             SELECT
-                call.id,
-                call.index,
-                call.extrinsic_id,
-                call.parent_id,
-                call.success,
-                call.name,
-                call.args,
-                extrinsic.block_id
+                {columns}
             FROM call
             INNER JOIN extrinsic ON call.extrinsic_id = extrinsic.id
             WHERE extrinsic.block_id = ANY($1::char(16)[])
                 AND EXISTS (SELECT 1 FROM event WHERE event.block_id = extrinsic.block_id AND event.name = ANY($3))
         UNION
             SELECT
-                call.id,
-                call.index,
-                call.extrinsic_id,
-                call.parent_id,
-                call.success,
-                call.name,
-                call.args,
-                child_call.block_id
-            FROM call INNER JOIN child_call ON child_call.parent_id = call.id
-        ) SELECT * FROM child_call";
-    let calls = sqlx::query_as::<_, Call>(query)
+                {child_columns}
+            FROM call INNER JOIN child_call ON child_call._parent_id = call.id
+        ) SELECT * FROM child_call",
+        columns=columns.join(", "),
+        child_columns=child_columns.join(", "),
+    );
+    let calls = sqlx::query_as::<_, Call>(&query)
         .bind(&blocks)
         .bind(&calls_name)
         .bind(&events_name)
@@ -262,18 +247,14 @@ pub async fn get_events(
             .map(|selection| selection.name.clone())
             .collect::<Vec<String>>())
     });
-    let query = "SELECT
-            id,
-            block_id,
-            index_in_block,
-            phase,
-            extrinsic_id,
-            call_id,
-            name,
-            args
+    let mut columns = get_events_columns(event_selections);
+    columns.push("block_id as _block_id".to_string());
+    let query = format!("SELECT {columns}
         FROM event
-        WHERE block_id = ANY($1::char(16)[]) AND name = ANY($2)";
-    let events = sqlx::query_as::<_, Event>(query)
+        WHERE block_id = ANY($1::char(16)[]) AND name = ANY($2)",
+        columns=columns.join(", "),
+    );
+    let events = sqlx::query_as::<_, Event>(&query)
         .bind(blocks)
         .bind(events_name)
         .fetch_all(pool)
@@ -297,4 +278,473 @@ pub async fn get_status(pool: &Pool<Postgres>) -> Result<Status, Error> {
         .fetch_one(pool)
         .await?;
     Ok(status)
+}
+
+
+fn get_calls_columns(call_selections: &Option<Vec<CallSelection>>) -> Vec<String> {
+    let mut columns = Vec::new();
+    let mut push_column = |column_name: String| {
+        if !columns.contains(&column_name) {
+            columns.push(column_name);
+        }
+    };
+    if let Some(call_selections) = call_selections {
+        for selection in call_selections {
+            if let Some(all) = selection.fields._all {
+                if all {
+                    push_column("call.id".to_string());
+                    push_column("call.index".to_string());
+                    push_column("call.extrinsic_id".to_string());
+                    push_column("call.parent_id".to_string());
+                    push_column("call.success".to_string());
+                    push_column("call.name".to_string());
+                    push_column("call.args".to_string());
+                }
+            }
+
+            if let Some(id) = selection.fields.id {
+                if id {
+                    push_column("call.id".to_string());
+                }
+            }
+
+            if let Some(index) = selection.fields.index {
+                if index {
+                    push_column("call.index".to_string());
+                }
+            }
+
+            if let Some(extrinsic_fields) = &selection.fields.extrinsic {
+                if let Some(all) = extrinsic_fields._all {
+                    if all {
+                        push_column("call.extrinsic_id".to_string());
+                    }
+                }
+
+                if let Some(id) = extrinsic_fields.id {
+                    if id {
+                        push_column("call.extrinsic_id".to_string());
+                    }
+                }
+
+                if let Some(block_id) = extrinsic_fields.block_id {
+                    if block_id {
+                        push_column("call.extrinsic_id".to_string());
+                    }
+                }
+
+                if let Some(index_in_block) = extrinsic_fields.index_in_block {
+                    if index_in_block {
+                        push_column("call.extrinsic_id".to_string());
+                    }
+                }
+
+                if let Some(name) = extrinsic_fields.name {
+                    if name {
+                        push_column("call.extrinsic_id".to_string());
+                    }
+                }
+
+                if let Some(signature) = extrinsic_fields.signature {
+                    if signature {
+                        push_column("call.extrinsic_id".to_string());
+                    }
+                }
+
+                if let Some(success) = extrinsic_fields.success {
+                    if success {
+                        push_column("call.extrinsic_id".to_string());
+                    }
+                }
+
+                if let Some(hash) = extrinsic_fields.hash {
+                    if hash {
+                        push_column("call.extrinsic_id".to_string());
+                    }
+                }
+            }
+
+            if let Some(parent) = selection.fields.parent {
+                if parent {
+                    push_column("call.parent_id".to_string());
+                }
+            }
+
+            if let Some(success) = selection.fields.success {
+                if success {
+                    push_column("call.success".to_string());
+                }
+            }
+
+            if let Some(name) = selection.fields.name {
+                if name {
+                    push_column("call.name".to_string());
+                }
+            }
+
+            if let Some(args) = selection.fields.args {
+                if args {
+                    push_column("call.args".to_string());
+                }
+            }
+        }
+    }
+    columns
+}
+
+
+fn get_events_columns(event_selections: &Option<Vec<EventSelection>>) -> Vec<String> {
+    let mut columns = Vec::new();
+    let mut push_column = |column_name: String| {
+        if !columns.contains(&column_name) {
+            columns.push(column_name);
+        }
+    };
+    if let Some(event_selections) = event_selections {
+        for selection in event_selections {
+            if let Some(all) = selection.fields._all {
+                if all {
+                    push_column("id".to_string());
+                    push_column("block_id".to_string());
+                    push_column("index_in_block".to_string());
+                    push_column("phase".to_string());
+                    push_column("extrinsic_id".to_string());
+                    push_column("call_id".to_string());
+                    push_column("name".to_string());
+                    push_column("args".to_string());
+                }
+            }
+
+            if let Some(id) = selection.fields.id {
+                if id {
+                    push_column("id".to_string());
+                }
+            }
+
+            if let Some(block_id) = selection.fields.block_id {
+                if block_id {
+                    push_column("block_id".to_string());
+                }
+            }
+
+            if let Some(index_in_block) = selection.fields.index_in_block {
+                if index_in_block {
+                    push_column("index_in_block".to_string());
+                }
+            }
+
+            if let Some(phase) = selection.fields.phase {
+                if phase {
+                    push_column("phase".to_string());
+                }
+            }
+
+            if let Some(extrinsic_fields) = &selection.fields.extrinsic {
+                if let Some(all) = extrinsic_fields._all {
+                    if all {
+                        push_column("extrinsic_id".to_string());
+                    }
+                }
+
+                if let Some(id) = extrinsic_fields.id {
+                    if id {
+                        push_column("extrinsic_id".to_string());
+                    }
+                }
+
+                if let Some(block_id) = extrinsic_fields.block_id {
+                    if block_id {
+                        push_column("extrinsic_id".to_string());
+                    }
+                }
+
+                if let Some(index_in_block) = extrinsic_fields.index_in_block {
+                    if index_in_block {
+                        push_column("extrinsic_id".to_string());
+                    }
+                }
+
+                if let Some(name) = extrinsic_fields.name {
+                    if name {
+                        push_column("extrinsic_id".to_string());
+                    }
+                }
+
+                if let Some(signature) = extrinsic_fields.signature {
+                    if signature {
+                        push_column("extrinsic_id".to_string());
+                    }
+                }
+
+                if let Some(success) = extrinsic_fields.success {
+                    if success {
+                        push_column("extrinsic_id".to_string());
+                    }
+                }
+
+                if let Some(hash) = extrinsic_fields.hash {
+                    if hash {
+                        push_column("extrinsic_id".to_string());
+                    }
+                }
+            }
+
+            if let Some(call_fields) = &selection.fields.call {
+                if let Some(all) = call_fields._all {
+                    if all {
+                        push_column("call_id".to_string());
+                    }
+                }
+
+                if let Some(id) = call_fields.id {
+                    if id {
+                        push_column("call_id".to_string());
+                    }
+                }
+
+                if let Some(extrinsic_fields) = &call_fields.extrinsic {
+                    if let Some(all) = extrinsic_fields._all {
+                        if all {
+                            push_column("call_id".to_string());
+                        }
+                    }
+
+                    if let Some(id) = extrinsic_fields.id {
+                        if id {
+                            push_column("call_id".to_string());
+                        }
+                    }
+
+                    if let Some(block_id) = extrinsic_fields.block_id {
+                        if block_id {
+                            push_column("call_id".to_string());
+                        }
+                    }
+
+                    if let Some(index_in_block) = extrinsic_fields.index_in_block {
+                        if index_in_block {
+                            push_column("call_id".to_string());
+                        }
+                    }
+
+                    if let Some(name) = extrinsic_fields.name {
+                        if name {
+                            push_column("call_id".to_string());
+                        }
+                    }
+
+                    if let Some(signature) = extrinsic_fields.signature {
+                        if signature {
+                            push_column("call_id".to_string());
+                        }
+                    }
+
+                    if let Some(success) = extrinsic_fields.success {
+                        if success {
+                            push_column("call_id".to_string());
+                        }
+                    }
+
+                    if let Some(hash) = extrinsic_fields.hash {
+                        if hash {
+                            push_column("call_id".to_string());
+                        }
+                    }
+                }
+
+                if let Some(parent) = call_fields.parent {
+                    if parent {
+                        push_column("call_id".to_string());
+                    }
+                }
+
+                if let Some(success) = call_fields.success {
+                    if success {
+                        push_column("call_id".to_string());
+                    }
+                }
+
+                if let Some(name) = call_fields.name {
+                    if name {
+                        push_column("call_id".to_string());
+                    }
+                }
+
+                if let Some(args) = call_fields.args {
+                    if args {
+                        push_column("call_id".to_string());
+                    }
+                }
+            }
+
+            if let Some(name) = selection.fields.name {
+                if name {
+                    push_column("name".to_string());
+                }
+            }
+
+            if let Some(args) = selection.fields.args {
+                if args {
+                    push_column("args".to_string());
+                }
+            }
+        }
+    }
+    columns
+}
+
+
+fn get_extrinsics_columns(
+    event_selections: &Option<Vec<EventSelection>>,
+    call_selections: &Option<Vec<CallSelection>>
+) -> Vec<String> {
+    let mut columns = Vec::new();
+    let mut push_column = |column_name: String| {
+        if !columns.contains(&column_name) {
+            columns.push(column_name);
+        }
+    };
+    if let Some(event_selections) = event_selections {
+        for selection in event_selections {
+            if let Some(all) = selection.fields._all {
+                if all {
+                    push_column("id".to_string());
+                    push_column("block_id".to_string());
+                    push_column("index_in_block".to_string());
+                    push_column("name".to_string());
+                    push_column("signature".to_string());
+                    push_column("success".to_string());
+                    push_column("hash".to_string());
+                }
+            }
+
+            if let Some(extrinsic_fields) = &selection.fields.extrinsic {
+                if let Some(all) = extrinsic_fields._all {
+                    if all {
+                        push_column("id".to_string());
+                        push_column("block_id".to_string());
+                        push_column("index_in_block".to_string());
+                        push_column("name".to_string());
+                        push_column("signature".to_string());
+                        push_column("success".to_string());
+                        push_column("hash".to_string());
+                    }
+                }
+
+                if let Some(id) = extrinsic_fields.id {
+                    if id {
+                        push_column("id".to_string());
+                    }
+                }
+
+                if let Some(block_id) = extrinsic_fields.block_id {
+                    if block_id {
+                        push_column("block_id".to_string());
+                    }
+                }
+
+                if let Some(index_in_block) = extrinsic_fields.index_in_block {
+                    if index_in_block {
+                        push_column("index_in_block".to_string());
+                    }
+                }
+
+                if let Some(name) = extrinsic_fields.name {
+                    if name {
+                        push_column("name".to_string());
+                    }
+                }
+
+                if let Some(signature) = extrinsic_fields.signature {
+                    if signature {
+                        push_column("signature".to_string());
+                    }
+                }
+
+                if let Some(success) = extrinsic_fields.success {
+                    if success {
+                        push_column("success".to_string());
+                    }
+                }
+
+                if let Some(hash) = extrinsic_fields.hash {
+                    if hash {
+                        push_column("hash".to_string());
+                    }
+                }
+            }
+        }
+    }
+    if let Some(call_selections) = call_selections {
+        for selection in call_selections {
+            if let Some(all) = selection.fields._all {
+                if all {
+                    push_column("id".to_string());
+                    push_column("block_id".to_string());
+                    push_column("index_in_block".to_string());
+                    push_column("name".to_string());
+                    push_column("signature".to_string());
+                    push_column("success".to_string());
+                    push_column("hash".to_string());
+                }
+            }
+
+            if let Some(extrinsic_fields) = &selection.fields.extrinsic {
+                if let Some(all) = extrinsic_fields._all {
+                    if all {
+                        push_column("id".to_string());
+                        push_column("block_id".to_string());
+                        push_column("index_in_block".to_string());
+                        push_column("name".to_string());
+                        push_column("signature".to_string());
+                        push_column("success".to_string());
+                        push_column("hash".to_string());
+                    }
+                }
+
+                if let Some(id) = extrinsic_fields.id {
+                    if id {
+                        push_column("id".to_string());
+                    }
+                }
+
+                if let Some(block_id) = extrinsic_fields.block_id {
+                    if block_id {
+                        push_column("block_id".to_string());
+                    }
+                }
+
+                if let Some(index_in_block) = extrinsic_fields.index_in_block {
+                    if index_in_block {
+                        push_column("index_in_block".to_string());
+                    }
+                }
+
+                if let Some(name) = extrinsic_fields.name {
+                    if name {
+                        push_column("name".to_string());
+                    }
+                }
+
+                if let Some(signature) = extrinsic_fields.signature {
+                    if signature {
+                        push_column("signature".to_string());
+                    }
+                }
+
+                if let Some(success) = extrinsic_fields.success {
+                    if success {
+                        push_column("success".to_string());
+                    }
+                }
+
+                if let Some(hash) = extrinsic_fields.hash {
+                    if hash {
+                        push_column("hash".to_string());
+                    }
+                }
+            }
+        }
+    }
+    columns
 }

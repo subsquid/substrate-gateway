@@ -1,5 +1,6 @@
 use crate::entities::{Extrinsic, Call, Event};
 use crate::repository::{get_extrinsics, get_calls, get_events, CallSelection, EventSelection};
+use crate::metrics::DB_TIME_SPENT_SECONDS;
 use std::collections::HashMap;
 use async_graphql::FieldError;
 use async_graphql::dataloader::Loader;
@@ -34,7 +35,9 @@ impl Loader<String> for ExtrinsicLoader {
     type Error = FieldError;
 
     async fn load(&self, keys: &[String]) -> Result<HashMap<String, Self::Value>, Self::Error> {
+        let timer = DB_TIME_SPENT_SECONDS.with_label_values(&["extrinsic"]).start_timer();
         let extrinsics = get_extrinsics(&self.pool, keys, &self.call_selections, &self.event_selections).await?;
+        timer.observe_duration();
         let mut map = HashMap::new();
         for extrinsic in extrinsics {
             let block_extrinsics = map.entry(extrinsic._block_id.clone()).or_insert_with(Vec::new);
@@ -74,7 +77,9 @@ impl Loader<String> for CallLoader {
 
     async fn load(&self, keys: &[String]) -> Result<HashMap<String, Self::Value>, Self::Error> {
         let mut map = HashMap::new();
+        let timer = DB_TIME_SPENT_SECONDS.with_label_values(&["call"]).start_timer();
         let calls = get_calls(&self.pool, keys, &self.call_selections, &self.event_selections).await?;
+        timer.observe_duration();
         for call in calls {
             let block_calls = map.entry(call._block_id.clone()).or_insert_with(Vec::new);
             block_calls.push(call);
@@ -109,7 +114,9 @@ impl Loader<String> for EventLoader {
     type Error = FieldError;
 
     async fn load(&self, keys: &[String]) -> Result<HashMap<String, Self::Value>, Self::Error> {
+        let timer = DB_TIME_SPENT_SECONDS.with_label_values(&["event"]).start_timer();
         let events = get_events(&self.pool, keys, &self.event_selections).await?;
+        timer.observe_duration();
         let mut map = HashMap::new();
         for event in events {
             let block_events = map.entry(event._block_id.clone()).or_insert_with(Vec::new);

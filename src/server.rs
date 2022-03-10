@@ -43,21 +43,18 @@ pub async fn run(schema: Schema<QueryRoot, EmptyMutation, EmptySubscription>) ->
         App::new()
             .app_data(Data::new(schema.clone()))
             .wrap(Logger::default())
-            .wrap_fn(|req, srv| {
-                let request_path = req.path();
-                let request_method = req.method().to_string();
-                HTTP_REQUESTS_TOTAL.with_label_values(&[&request_method, request_path]).inc();
-                let histogram_timer = HTTP_RESPONSE_TIME_SECONDS.with_label_values(&[&request_method, request_path]).start_timer();
+            .service(resource("/").guard(Get()).to(graphql_playground))
+            .service(resource("/graphql").guard(Post()).to(graphql_request).wrap_fn(|req, srv| {
+                HTTP_REQUESTS_TOTAL.with_label_values(&[]).inc();
+                let timer = HTTP_RESPONSE_TIME_SECONDS.with_label_values(&[]).start_timer();
 
                 let fut = srv.call(req);
                 async {
                     let res = fut.await?;
-                    histogram_timer.observe_duration();
+                    timer.observe_duration();
                     Ok(res)
                 }
-            })
-            .service(resource("/").guard(Get()).to(graphql_playground))
-            .service(resource("/graphql").guard(Post()).to(graphql_request))
+            }))
             .service(resource("/metrics").guard(Get()).to(metrics))
     })
     .bind("0.0.0.0:8000").unwrap()

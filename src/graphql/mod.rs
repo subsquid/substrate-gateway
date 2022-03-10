@@ -1,5 +1,6 @@
 use crate::entities::{Block, BlockHeader, Metadata, Status};
 use crate::repository::{get_blocks, get_metadata, get_status, EventSelection, CallSelection};
+use crate::metrics::DB_TIME_SPENT_SECONDS;
 use std::sync::Arc;
 use sqlx::{Pool, Postgres};
 use async_graphql::{Context, Object, Result};
@@ -118,21 +119,29 @@ impl QueryRoot {
             actix_web::rt::spawn
         );
         let block_context = Arc::new(BlockContext::new(call_loader, extrinsic_loader, event_loader));
+        let timer = DB_TIME_SPENT_SECONDS.with_label_values(&["block"]).start_timer();
         let blocks = get_blocks(pool, limit, from_block, to_block, events, calls, include_all_blocks)
             .await?
             .into_iter()
             .map(|block| BlockObject::new(block, block_context.clone()))
             .collect();
+        timer.observe_duration();
         Ok(blocks)
     }
 
     async fn metadata(&self, ctx: &Context<'_>) -> Result<Vec<Metadata>> {
         let pool = ctx.data::<sqlx::Pool<sqlx::Postgres>>()?;
-        Ok(get_metadata(&pool).await?)
+        let timer = DB_TIME_SPENT_SECONDS.with_label_values(&["metadata"]).start_timer();
+        let metadata = get_metadata(&pool).await?;
+        timer.observe_duration();
+        Ok(metadata)
     }
 
     async fn status(&self, ctx: &Context<'_>) -> Result<Status> {
         let pool = ctx.data::<sqlx::Pool<sqlx::Postgres>>()?;
-        Ok(get_status(&pool).await?)
+        let timer = DB_TIME_SPENT_SECONDS.with_label_values(&["block"]).start_timer();
+        let status = get_status(&pool).await?;
+        timer.observe_duration();
+        Ok(status)
     }
 }

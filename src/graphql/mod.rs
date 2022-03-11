@@ -11,14 +11,14 @@ use loader::{ExtrinsicLoader, CallLoader, EventLoader};
 pub mod loader;
 
 
-struct BlockContext {
+struct BatchContext {
     call_loader: DataLoader<CallLoader>,
     extrinsic_loader: DataLoader<ExtrinsicLoader>,
     event_loader: DataLoader<EventLoader>,
 }
 
 
-impl BlockContext {
+impl BatchContext {
     fn new(
         call_loader: DataLoader<CallLoader>,
         extrinsic_loader: DataLoader<ExtrinsicLoader>,
@@ -33,14 +33,14 @@ impl BlockContext {
 }
 
 
-struct BlockObject {
+struct Batch {
     block: Block,
-    context: Arc<BlockContext>,
+    context: Arc<BatchContext>,
 }
 
 
-impl BlockObject {
-    pub fn new(block: Block, context: Arc<BlockContext>) -> Self {
+impl Batch {
+    pub fn new(block: Block, context: Arc<BatchContext>) -> Self {
         Self {
             block,
             context
@@ -49,8 +49,8 @@ impl BlockObject {
 }
 
 
-#[Object(name = "Block")]
-impl BlockObject {
+#[Object]
+impl Batch {
     async fn header(&self, _ctx: &Context<'_>) -> &BlockHeader {
         &self.block.header
     }
@@ -95,7 +95,7 @@ pub struct QueryRoot;
 
 #[Object]
 impl QueryRoot {
-    async fn blocks(
+    async fn batch(
         &self,
         ctx: &Context<'_>,
         limit: i32,
@@ -104,7 +104,7 @@ impl QueryRoot {
         events: Option<Vec<EventSelection>>,
         calls: Option<Vec<CallSelection>>,
         include_all_blocks: Option<bool>,
-    ) -> Result<Vec<BlockObject>> {
+    ) -> Result<Vec<Batch>> {
         let pool = ctx.data::<Pool<Postgres>>()?;
         let call_loader = DataLoader::new(
             CallLoader::new(pool.clone(), calls.clone(), events.clone()),
@@ -118,12 +118,12 @@ impl QueryRoot {
             EventLoader::new(pool.clone(), events.clone()),
             actix_web::rt::spawn
         );
-        let block_context = Arc::new(BlockContext::new(call_loader, extrinsic_loader, event_loader));
+        let batch_context = Arc::new(BatchContext::new(call_loader, extrinsic_loader, event_loader));
         let timer = DB_TIME_SPENT_SECONDS.with_label_values(&["block"]).start_timer();
         let blocks = get_blocks(pool, limit, from_block, to_block, events, calls, include_all_blocks)
             .await?
             .into_iter()
-            .map(|block| BlockObject::new(block, block_context.clone()))
+            .map(|block| Batch::new(block, batch_context.clone()))
             .collect();
         timer.observe_duration();
         Ok(blocks)

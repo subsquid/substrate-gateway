@@ -7,7 +7,6 @@ use async_graphql::InputObject;
 pub struct ExtrinsicFields {
     #[graphql(name="_all")]
     _all: Option<bool>,
-    id: Option<bool>,
     block_id: Option<bool>,
     index_in_block: Option<bool>,
     name: Option<bool>,
@@ -21,7 +20,6 @@ pub struct ExtrinsicFields {
 pub struct CallFields {
     #[graphql(name="_all")]
     _all: Option<bool>,
-    id: Option<bool>,
     index: Option<bool>,
     extrinsic: Option<ExtrinsicFields>,
     parent: Option<bool>,
@@ -35,7 +33,6 @@ pub struct CallFields {
 pub struct EventFields {
     #[graphql(name="_all")]
     _all: Option<bool>,
-    id: Option<bool>,
     block_id: Option<bool>,
     index_in_block: Option<bool>,
     phase: Option<bool>,
@@ -285,7 +282,7 @@ fn get_calls_columns(
     call_selections: &Option<Vec<CallSelection>>,
     event_selections: &Option<Vec<EventSelection>>
 ) -> Vec<String> {
-    let mut columns = Vec::new();
+    let mut columns = vec!["call.id".to_string()];
     let mut push_column = |column_name: String| {
         if !columns.contains(&column_name) {
             columns.push(column_name);
@@ -295,19 +292,12 @@ fn get_calls_columns(
         for selection in call_selections {
             if let Some(all) = selection.fields._all {
                 if all {
-                    push_column("call.id".to_string());
                     push_column("call.index".to_string());
                     push_column("call.extrinsic_id".to_string());
                     push_column("call.parent_id".to_string());
                     push_column("call.success".to_string());
                     push_column("call.name".to_string());
                     push_column("call.args".to_string());
-                }
-            }
-
-            if let Some(id) = selection.fields.id {
-                if id {
-                    push_column("call.id".to_string());
                 }
             }
 
@@ -320,12 +310,6 @@ fn get_calls_columns(
             if let Some(extrinsic_fields) = &selection.fields.extrinsic {
                 if let Some(all) = extrinsic_fields._all {
                     if all {
-                        push_column("call.extrinsic_id".to_string());
-                    }
-                }
-
-                if let Some(id) = extrinsic_fields.id {
-                    if id {
                         push_column("call.extrinsic_id".to_string());
                     }
                 }
@@ -396,7 +380,6 @@ fn get_calls_columns(
         for selection in event_selections {
             if let Some(all) = selection.fields._all {
                 if all {
-                    push_column("call.id".to_string());
                     push_column("call.index".to_string());
                     push_column("call.extrinsic_id".to_string());
                     push_column("call.parent_id".to_string());
@@ -409,19 +392,12 @@ fn get_calls_columns(
             if let Some(call_fields) = &selection.fields.call {
                 if let Some(all) = call_fields._all {
                     if all {
-                        push_column("call.id".to_string());
                         push_column("call.index".to_string());
                         push_column("call.extrinsic_id".to_string());
                         push_column("call.parent_id".to_string());
                         push_column("call.success".to_string());
                         push_column("call.name".to_string());
                         push_column("call.args".to_string());
-                    }
-                }
-
-                if let Some(id) = call_fields.id {
-                    if id {
-                        push_column("call.id".to_string());
                     }
                 }
 
@@ -434,12 +410,6 @@ fn get_calls_columns(
                 if let Some(extrinsic_fields) = &call_fields.extrinsic {
                     if let Some(all) = extrinsic_fields._all {
                         if all {
-                            push_column("call.extrinsic_id".to_string());
-                        }
-                    }
-
-                    if let Some(id) = extrinsic_fields.id {
-                        if id {
                             push_column("call.extrinsic_id".to_string());
                         }
                     }
@@ -512,7 +482,7 @@ fn get_calls_columns(
 
 
 fn get_events_columns(event_selections: &Option<Vec<EventSelection>>) -> Vec<String> {
-    let mut columns = Vec::new();
+    let mut columns = vec!["id".to_string()];
     let mut push_column = |column_name: String| {
         if !columns.contains(&column_name) {
             columns.push(column_name);
@@ -522,7 +492,6 @@ fn get_events_columns(event_selections: &Option<Vec<EventSelection>>) -> Vec<Str
         for selection in event_selections {
             if let Some(all) = selection.fields._all {
                 if all {
-                    push_column("id".to_string());
                     push_column("block_id".to_string());
                     push_column("index_in_block".to_string());
                     push_column("phase".to_string());
@@ -530,12 +499,6 @@ fn get_events_columns(event_selections: &Option<Vec<EventSelection>>) -> Vec<Str
                     push_column("call_id".to_string());
                     push_column("name".to_string());
                     push_column("args".to_string());
-                }
-            }
-
-            if let Some(id) = selection.fields.id {
-                if id {
-                    push_column("id".to_string());
                 }
             }
 
@@ -560,12 +523,6 @@ fn get_events_columns(event_selections: &Option<Vec<EventSelection>>) -> Vec<Str
             if let Some(extrinsic_fields) = &selection.fields.extrinsic {
                 if let Some(all) = extrinsic_fields._all {
                     if all {
-                        push_column("extrinsic_id".to_string());
-                    }
-                }
-
-                if let Some(id) = extrinsic_fields.id {
-                    if id {
                         push_column("extrinsic_id".to_string());
                     }
                 }
@@ -614,21 +571,9 @@ fn get_events_columns(event_selections: &Option<Vec<EventSelection>>) -> Vec<Str
                     }
                 }
 
-                if let Some(id) = call_fields.id {
-                    if id {
-                        push_column("call_id".to_string());
-                    }
-                }
-
                 if let Some(extrinsic_fields) = &call_fields.extrinsic {
                     if let Some(all) = extrinsic_fields._all {
                         if all {
-                            push_column("call_id".to_string());
-                        }
-                    }
-
-                    if let Some(id) = extrinsic_fields.id {
-                        if id {
                             push_column("call_id".to_string());
                         }
                     }
@@ -716,7 +661,7 @@ fn get_extrinsics_columns(
     event_selections: &Option<Vec<EventSelection>>,
     call_selections: &Option<Vec<CallSelection>>
 ) -> Vec<String> {
-    let mut columns = Vec::new();
+    let mut columns = vec!["id".to_string()];
     let mut push_column = |column_name: String| {
         if !columns.contains(&column_name) {
             columns.push(column_name);
@@ -726,7 +671,6 @@ fn get_extrinsics_columns(
         for selection in event_selections {
             if let Some(all) = selection.fields._all {
                 if all {
-                    push_column("id".to_string());
                     push_column("block_id".to_string());
                     push_column("index_in_block".to_string());
                     push_column("name".to_string());
@@ -739,19 +683,12 @@ fn get_extrinsics_columns(
             if let Some(extrinsic_fields) = &selection.fields.extrinsic {
                 if let Some(all) = extrinsic_fields._all {
                     if all {
-                        push_column("id".to_string());
                         push_column("block_id".to_string());
                         push_column("index_in_block".to_string());
                         push_column("name".to_string());
                         push_column("signature".to_string());
                         push_column("success".to_string());
                         push_column("hash".to_string());
-                    }
-                }
-
-                if let Some(id) = extrinsic_fields.id {
-                    if id {
-                        push_column("id".to_string());
                     }
                 }
 
@@ -797,7 +734,6 @@ fn get_extrinsics_columns(
         for selection in call_selections {
             if let Some(all) = selection.fields._all {
                 if all {
-                    push_column("id".to_string());
                     push_column("block_id".to_string());
                     push_column("index_in_block".to_string());
                     push_column("name".to_string());
@@ -810,19 +746,12 @@ fn get_extrinsics_columns(
             if let Some(extrinsic_fields) = &selection.fields.extrinsic {
                 if let Some(all) = extrinsic_fields._all {
                     if all {
-                        push_column("id".to_string());
                         push_column("block_id".to_string());
                         push_column("index_in_block".to_string());
                         push_column("name".to_string());
                         push_column("signature".to_string());
                         push_column("success".to_string());
                         push_column("hash".to_string());
-                    }
-                }
-
-                if let Some(id) = extrinsic_fields.id {
-                    if id {
-                        push_column("id".to_string());
                     }
                 }
 

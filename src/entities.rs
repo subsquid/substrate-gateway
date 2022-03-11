@@ -16,9 +16,7 @@ pub struct BlockHeader {
 
 #[derive(FromRow, Clone, Debug, Serialize, Deserialize)]
 pub struct Extrinsic {
-    #[sqlx(default)]
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub id: Option<String>,
+    pub id: String,
     #[sqlx(default)]
     #[serde(skip_serializing_if = "Option::is_none")]
     pub block_id: Option<String>,
@@ -44,9 +42,7 @@ pub struct Extrinsic {
 
 #[derive(FromRow, Clone, Debug, Serialize, Deserialize)]
 pub struct Call {
-    #[sqlx(default)]
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub id: Option<String>,
+    pub id: String,
     #[sqlx(default)]
     #[serde(skip_serializing_if = "Option::is_none")]
     pub index: Option<i32>,
@@ -72,9 +68,7 @@ pub struct Call {
 
 #[derive(FromRow, Clone, Debug, Serialize, Deserialize)]
 pub struct Event {
-    #[sqlx(default)]
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub id: Option<String>,
+    pub id: String,
     #[sqlx(default)]
     #[serde(skip_serializing_if = "Option::is_none")]
     pub block_id: Option<String>,

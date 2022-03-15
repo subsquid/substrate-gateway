@@ -1,7 +1,9 @@
 use crate::entities::{Block, BlockHeader, Metadata, Status};
 use crate::repository::{get_blocks, get_metadata, get_status, EventSelection, CallSelection};
 use crate::metrics::DB_TIME_SPENT_SECONDS;
-use std::sync::Arc;
+use crate::server::DbTimer;
+use std::time::{SystemTime, UNIX_EPOCH};
+use std::sync::{Arc, Mutex};
 use sqlx::{Pool, Postgres};
 use async_graphql::{Context, Object, Result};
 use async_graphql::dataloader::DataLoader;
@@ -106,27 +108,30 @@ impl QueryRoot {
         include_all_blocks: Option<bool>,
     ) -> Result<Vec<Batch>> {
         let pool = ctx.data::<Pool<Postgres>>()?;
+        let db_timer = ctx.data::<Arc<Mutex<DbTimer>>>()?;
         let call_loader = DataLoader::new(
-            CallLoader::new(pool.clone(), calls.clone(), events.clone()),
+            CallLoader::new(pool.clone(), calls.clone(), events.clone(), db_timer.clone()),
             actix_web::rt::spawn
         );
         let extrinsic_loader = DataLoader::new(
-            ExtrinsicLoader::new(pool.clone(), calls.clone(), events.clone()),
+            ExtrinsicLoader::new(pool.clone(), calls.clone(), events.clone(), db_timer.clone()),
             actix_web::rt::spawn
         );
         let event_loader = DataLoader::new(
-            EventLoader::new(pool.clone(), events.clone()),
+            EventLoader::new(pool.clone(), events.clone(), db_timer.clone()),
             actix_web::rt::spawn
         );
         let batch_context = Arc::new(BatchContext::new(call_loader, extrinsic_loader, event_loader));
         let timer = DB_TIME_SPENT_SECONDS.with_label_values(&["block"]).start_timer();
-        let blocks = get_blocks(pool, limit, from_block, to_block, events, calls, include_all_blocks)
-            .await?
-            .into_iter()
+        let query_start = SystemTime::now().duration_since(UNIX_EPOCH)?;
+        let blocks = get_blocks(pool, limit, from_block, to_block, events, calls, include_all_blocks).await?;
+        let query_finish = SystemTime::now().duration_since(UNIX_EPOCH)?;
+        db_timer.lock().unwrap().add_interval((query_start, query_finish));
+        let batch = blocks.into_iter()
             .map(|block| Batch::new(block, batch_context.clone()))
             .collect();
         timer.observe_duration();
-        Ok(blocks)
+        Ok(batch)
     }
 
     async fn metadata(&self, ctx: &Context<'_>) -> Result<Vec<Metadata>> {

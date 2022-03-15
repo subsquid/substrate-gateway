@@ -1,5 +1,5 @@
 use crate::graphql::QueryRoot;
-use crate::metrics::{HTTP_REQUESTS_TOTAL, HTTP_RESPONSE_TIME_SECONDS, SERIALIZATION_TIME_SPENT_SECONDS};
+use crate::metrics::{HTTP_REQUESTS_TOTAL, HTTP_RESPONSE_TIME_SECONDS, SERIALIZATION_TIME_SPENT_SECONDS, HTTP_REQUESTS_ERRORS};
 use std::time::Duration;
 use std::sync::{Arc, Mutex};
 use async_graphql::{EmptyMutation, EmptySubscription, Schema};
@@ -82,7 +82,11 @@ async fn graphql_request(
     let extensions = req.extensions();
     let db_timer = extensions.get::<Arc<Mutex<DbTimer>>>().expect("DbTimer wasn't initialized");
     let request = gql_req.into_inner().data(db_timer.clone());
-    schema.execute(request).await.into()
+    let response = schema.execute(request).await;
+    if response.is_err() {
+        HTTP_REQUESTS_ERRORS.with_label_values(&[]).inc();
+    }
+    response.into()
 }
 
 

@@ -19,6 +19,11 @@ lazy_static! {
         &[]
     )
     .expect("Can't create a metric");
+    pub static ref HTTP_REQUESTS_ERRORS: IntCounterVec = register_int_counter_vec!(
+        opts!("http_requests_errors", "HTTP requests errors"),
+        &[]
+    )
+    .expect("Can't create a metric");
     pub static ref HTTP_RESPONSE_TIME_SECONDS: HistogramVec = register_histogram_vec!(
         "http_response_time_seconds",
         "HTTP response times",

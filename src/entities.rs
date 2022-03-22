@@ -11,6 +11,7 @@ pub struct BlockHeader {
     pub hash: String,
     pub parent_hash: String,
     pub timestamp: DateTime<Utc>,
+    pub spec_version: i32,
 }
 
 
@@ -46,6 +47,9 @@ pub struct Call {
     #[sqlx(default)]
     #[serde(skip_serializing_if = "Option::is_none")]
     pub index: Option<i32>,
+    #[sqlx(default)]
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub block_id: Option<String>,
     #[sqlx(default)]
     #[serde(skip_serializing_if = "Option::is_none")]
     pub extrinsic_id: Option<String>,

@@ -21,6 +21,7 @@ pub struct CallFields {
     #[graphql(name="_all")]
     _all: Option<bool>,
     index: Option<bool>,
+    block_id: Option<bool>,
     extrinsic: Option<ExtrinsicFields>,
     parent: Option<bool>,
     success: Option<bool>,
@@ -77,17 +78,14 @@ pub async fn get_blocks(
             height,
             hash,
             parent_hash,
-            timestamp
+            timestamp,
+            spec_version
         FROM block
         WHERE height >= $1
             AND ($2 IS null OR height < $2)
             AND ($3 IS true OR (
                 EXISTS (SELECT 1 FROM event WHERE event.block_id = block.id AND event.name = ANY($4))
-                OR EXISTS (
-                    SELECT 1
-                    FROM call INNER JOIN extrinsic ON call.extrinsic_id = extrinsic.id
-                    WHERE extrinsic.block_id = block.id AND call.name = ANY($5)
-                )
+                OR EXISTS (SELECT 1 FROM call WHERE call.block_id = block.id AND call.name = ANY($5))
             ))
         ORDER BY height
         LIMIT $6";
@@ -105,6 +103,7 @@ pub async fn get_blocks(
                 hash: row.get_unchecked("hash"),
                 parent_hash: row.get_unchecked("parent_hash"),
                 timestamp: row.get_unchecked("timestamp"),
+                spec_version: row.get_unchecked("spec_version"),
             },
         })
         .fetch_all(pool)
@@ -198,7 +197,7 @@ pub async fn get_calls(
     });
     let mut columns = get_calls_columns(call_selections, event_selections);
     let mut child_columns = columns.clone();
-    columns.push("extrinsic.block_id AS _block_id".to_string());
+    columns.push("call.block_id AS _block_id".to_string());
     columns.push("call.parent_id AS _parent_id".to_string());
     child_columns.push("child_call._block_id AS _block_id".to_string());
     child_columns.push("child_call._parent_id AS _parent_id".to_string());
@@ -206,15 +205,14 @@ pub async fn get_calls(
             SELECT
                 {columns}
             FROM call
-            INNER JOIN extrinsic ON call.extrinsic_id = extrinsic.id
-            WHERE extrinsic.block_id = ANY($1::char(16)[]) AND call.name = ANY($2)
+            WHERE call.block_id = ANY($1::char(16)[]) AND call.name = ANY($2)
             UNION
             SELECT
                 {columns}
             FROM call
             INNER JOIN extrinsic ON call.extrinsic_id = extrinsic.id
             WHERE extrinsic.block_id = ANY($1::char(16)[])
-                AND EXISTS (SELECT 1 FROM event WHERE event.block_id = extrinsic.block_id AND event.name = ANY($3))
+                AND EXISTS (SELECT 1 FROM event WHERE event.block_id = call.block_id AND event.name = ANY($3))
         UNION
             SELECT
                 {child_columns}
@@ -293,6 +291,7 @@ fn get_calls_columns(
             if let Some(all) = selection.fields._all {
                 if all {
                     push_column("call.index".to_string());
+                    push_column("call.block_id".to_string());
                     push_column("call.extrinsic_id".to_string());
                     push_column("call.parent_id".to_string());
                     push_column("call.success".to_string());
@@ -304,6 +303,12 @@ fn get_calls_columns(
             if let Some(index) = selection.fields.index {
                 if index {
                     push_column("call.index".to_string());
+                }
+            }
+
+            if let Some(block_id) = selection.fields.block_id {
+                if block_id {
+                    push_column("call.block_id".to_string());
                 }
             }
 
@@ -381,6 +386,7 @@ fn get_calls_columns(
             if let Some(all) = selection.fields._all {
                 if all {
                     push_column("call.index".to_string());
+                    push_column("call.block_id".to_string());
                     push_column("call.extrinsic_id".to_string());
                     push_column("call.parent_id".to_string());
                     push_column("call.success".to_string());
@@ -393,6 +399,7 @@ fn get_calls_columns(
                 if let Some(all) = call_fields._all {
                     if all {
                         push_column("call.index".to_string());
+                        push_column("call.block_id".to_string());
                         push_column("call.extrinsic_id".to_string());
                         push_column("call.parent_id".to_string());
                         push_column("call.success".to_string());
@@ -404,6 +411,12 @@ fn get_calls_columns(
                 if let Some(index) = call_fields.index {
                     if index {
                         push_column("call.index".to_string());
+                    }
+                }
+
+                if let Some(block_id) = call_fields.block_id {
+                    if block_id {
+                        push_column("call.block_id".to_string());
                     }
                 }
 

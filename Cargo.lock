@@ -276,7 +276,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "archive-gateway-example"
+name = "archive-gateway"
 version = "0.1.0"
 dependencies = [
  "actix-web",

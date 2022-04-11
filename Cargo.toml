@@ -6,7 +6,7 @@ edition = "2021"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-async-graphql = { version = "3.0.31", features = [ "chrono", "dataloader" ] }
+async-graphql = { version = "3.0.31", features = [ "chrono" ] }
 async-graphql-actix-web = "3.0.31"
 async-trait = "0.1.52"
 actix-web = { version = "4.0.0-rc.3", default-features = false, features = [ "macros" ] }

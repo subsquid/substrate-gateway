@@ -4,14 +4,15 @@ use serde::{Serialize, Deserialize};
 use sqlx::FromRow;
 
 
-#[derive(SimpleObject, Debug)]
+#[derive(FromRow, SimpleObject, Debug)]
 pub struct BlockHeader {
     pub id: String,
     pub height: i32,
     pub hash: String,
     pub parent_hash: String,
     pub timestamp: DateTime<Utc>,
-    pub spec_version: i32,
+    pub spec_id: String,
+    pub validator: Option<String>,
 }
 
 
@@ -26,18 +27,19 @@ pub struct Extrinsic {
     pub index_in_block: Option<i32>,
     #[sqlx(default)]
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub name: Option<String>,
-    #[sqlx(default)]
-    #[serde(skip_serializing_if = "Option::is_none")]
     pub signature: Option<serde_json::Value>,
     #[sqlx(default)]
     #[serde(skip_serializing_if = "Option::is_none")]
     pub success: Option<bool>,
     #[sqlx(default)]
     #[serde(skip_serializing_if = "Option::is_none")]
+    pub call_id: Option<String>,
+    #[sqlx(default)]
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub hash: Option<String>,
-    #[serde(skip_serializing)]
-    pub _block_id: String,
+    pub pos: i32,
+    #[serde(skip)]
+    pub _call_id: String,
 }
 
 
@@ -45,11 +47,8 @@ pub struct Extrinsic {
 pub struct Call {
     pub id: String,
     #[sqlx(default)]
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub index: Option<i32>,
-    #[sqlx(default)]
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub block_id: Option<String>,
+    #[serde(skip)]
+    pub block_id: String,
     #[sqlx(default)]
     #[serde(skip_serializing_if = "Option::is_none")]
     pub extrinsic_id: Option<String>,
@@ -65,8 +64,11 @@ pub struct Call {
     #[sqlx(default)]
     #[serde(skip_serializing_if = "Option::is_none")]
     pub args: Option<serde_json::Value>,
-    #[serde(skip_serializing)]
-    pub _block_id: String,
+    pub pos: i32,
+    #[serde(skip)]
+    pub _name: String,
+    #[serde(skip)]
+    pub _extrinsic_id: String,
 }
 
 
@@ -94,19 +96,23 @@ pub struct Event {
     #[sqlx(default)]
     #[serde(skip_serializing_if = "Option::is_none")]
     pub args: Option<serde_json::Value>,
-    #[serde(skip_serializing)]
-    pub _block_id: String,
+    pub pos: i32,
 }
 
 
-#[derive(Debug)]
-pub struct Block {
+#[derive(SimpleObject, Debug)]
+pub struct Batch {
     pub header: BlockHeader,
+    pub extrinsics: Option<Vec<serde_json::Value>>,
+    pub calls: Option<Vec<serde_json::Value>>,
+    pub events: Option<Vec<serde_json::Value>>,
 }
 
 
 #[derive(FromRow, SimpleObject, Debug)]
 pub struct Metadata {
+    id: String,
+    spec_name: String,
     spec_version: i32,
     block_height: i32,
     block_hash: String,

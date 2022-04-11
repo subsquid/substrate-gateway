@@ -8,6 +8,7 @@ mod graphql;
 mod repository;
 mod server;
 mod metrics;
+mod services;
 
 
 #[actix_web::main]

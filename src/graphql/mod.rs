@@ -1,93 +1,221 @@
-use crate::entities::{Block, BlockHeader, Metadata, Status};
-use crate::repository::{get_blocks, get_metadata, get_status, EventSelection, CallSelection};
+use crate::entities::{Batch, Metadata, Status};
+use crate::repository::{get_metadata, get_status};
 use crate::metrics::DB_TIME_SPENT_SECONDS;
-use crate::server::DbTimer;
-use std::time::{SystemTime, UNIX_EPOCH};
-use std::sync::{Arc, Mutex};
+use crate::services::{
+    get_batch, EventSelection, EventDataSelection, EventFields, CallSelection,
+    ParentCallFields, ExtrinsicFields, CallFields, CallDataSelection
+};
 use sqlx::{Pool, Postgres};
-use async_graphql::{Context, Object, Result};
-use async_graphql::dataloader::DataLoader;
-use loader::{ExtrinsicLoader, CallLoader, EventLoader};
+use async_graphql::{Context, Object, Result, InputObject};
 
 
-pub mod loader;
-
-
-struct BatchContext {
-    call_loader: DataLoader<CallLoader>,
-    extrinsic_loader: DataLoader<ExtrinsicLoader>,
-    event_loader: DataLoader<EventLoader>,
+#[derive(InputObject, Clone)]
+#[graphql(name = "ParentCallFields")]
+pub struct ParentCallFieldsInput {
+    #[graphql(name="_all")]
+    pub _all: Option<bool>,
+    pub name: Option<bool>,
+    pub args: Option<bool>,
+    pub success: Option<bool>,
+    pub parent: Option<bool>,
 }
 
 
-impl BatchContext {
-    fn new(
-        call_loader: DataLoader<CallLoader>,
-        extrinsic_loader: DataLoader<ExtrinsicLoader>,
-        event_loader: DataLoader<EventLoader>
-    ) -> Self {
-        Self {
-            call_loader,
-            extrinsic_loader,
-            event_loader,
+impl ParentCallFields {
+    pub fn from(fields: ParentCallFieldsInput) -> Self {
+        ParentCallFields {
+            _all: fields._all.unwrap_or(false),
+            name: fields.name.unwrap_or(false),
+            args: fields.args.unwrap_or(false),
+            success: fields.success.unwrap_or(false),
+            parent: fields.parent.unwrap_or(false),
         }
     }
 }
 
 
-struct Batch {
-    block: Block,
-    context: Arc<BatchContext>,
+#[derive(InputObject, Clone)]
+#[graphql(name = "CallFields")]
+pub struct CallFieldsInput {
+    #[graphql(name="_all")]
+    pub _all: Option<bool>,
+    pub success: Option<bool>,
+    pub name: Option<bool>,
+    pub args: Option<bool>,
+    pub parent: Option<ParentCallFieldsInput>,
 }
 
 
-impl Batch {
-    pub fn new(block: Block, context: Arc<BatchContext>) -> Self {
-        Self {
-            block,
-            context
+impl CallFields {
+    pub fn from(fields: CallFieldsInput) -> Self {
+        CallFields {
+            _all: fields._all.unwrap_or(false),
+            success: fields.success.unwrap_or(false),
+            name: fields.name.unwrap_or(false),
+            args: fields.args.unwrap_or(false),
+            parent: fields.parent.map_or_else(|| {
+                ParentCallFields::new(false)
+            }, |parent| {
+                ParentCallFields::from(parent)
+            })
         }
     }
 }
 
 
-#[Object]
-impl Batch {
-    async fn header(&self, _ctx: &Context<'_>) -> &BlockHeader {
-        &self.block.header
-    }
+#[derive(InputObject, Clone)]
+#[graphql(name = "ExtrinsicFields")]
+pub struct ExtrinsicFieldsInput {
+    #[graphql(name="_all")]
+    pub _all: Option<bool>,
+    pub index_in_block: Option<bool>,
+    pub signature: Option<bool>,
+    pub success: Option<bool>,
+    pub hash: Option<bool>,
+    pub call: Option<CallFieldsInput>,
+}
 
-    async fn extrinsics(&self, _ctx: &Context<'_>) -> Result<Vec<serde_json::Value>> {
-        let extrinsics = self.context.extrinsic_loader
-            .load_one(self.block.header.id.clone())
-            .await?
-            .unwrap_or_else(Vec::new)
-            .iter()
-            .map(|extrinsic| serde_json::to_value(extrinsic).unwrap())
-            .collect();
-        Ok(extrinsics)
-    }
 
-    async fn calls(&self, _ctx: &Context<'_>) -> Result<Vec<serde_json::Value>> {
-        let calls = self.context.call_loader
-            .load_one(self.block.header.id.clone())
-            .await?
-            .unwrap_or_else(Vec::new)
-            .iter()
-            .map(|call| serde_json::to_value(call).unwrap())
-            .collect();
-        Ok(calls)
+impl ExtrinsicFields {
+    pub fn from(fields: ExtrinsicFieldsInput) -> Self {
+        ExtrinsicFields {
+            _all: fields._all.unwrap_or(false),
+            index_in_block: fields.index_in_block.unwrap_or(false),
+            signature: fields.signature.unwrap_or(false),
+            success: fields.success.unwrap_or(false),
+            hash: fields.hash.unwrap_or(false),
+            call: fields.call.map_or_else(|| {
+                CallFields::new(false)
+            }, |call| {
+                CallFields::from(call)
+            }),
+        }
     }
+}
 
-    async fn events(&self, _ctx: &Context<'_>) -> Result<Vec<serde_json::Value>> {
-        let events = self.context.event_loader
-            .load_one(self.block.header.id.clone())
-            .await?
-            .unwrap_or_else(Vec::new)
-            .iter()
-            .map(|event| serde_json::to_value(event).unwrap())
-            .collect();
-        Ok(events)
+
+#[derive(InputObject, Clone)]
+#[graphql(name = "EventFields")]
+pub struct EventFieldsInput {
+    #[graphql(name="_all")]
+    pub  _all: Option<bool>,
+    pub index_in_block: Option<bool>,
+    pub phase: Option<bool>,
+    pub extrinsic: Option<ExtrinsicFieldsInput>,
+    pub call: Option<CallFieldsInput>,
+    pub name: Option<bool>,
+    pub args: Option<bool>,
+}
+
+
+impl EventFields {
+    pub fn from(fields: EventFieldsInput) -> Self {
+        EventFields {
+            _all: fields._all.unwrap_or(false),
+            index_in_block: fields.index_in_block.unwrap_or(false),
+            phase: fields.phase.unwrap_or(false),
+            extrinsic: fields.extrinsic.map_or_else(|| {
+                ExtrinsicFields::new(false)
+            }, |extrinsic| {
+                ExtrinsicFields::from(extrinsic)
+            }),
+            call: fields.call.map_or_else(|| {
+                CallFields::new(false)
+            }, |call| {
+                CallFields::from(call)
+            }),
+            name: fields.name.unwrap_or(false),
+            args: fields.args.unwrap_or(false),
+        }
+    }
+}
+
+
+#[derive(InputObject, Clone)]
+#[graphql(name = "EventDataSelection")]
+pub struct EventDataSelectionInput {
+    pub event: Option<EventFieldsInput>,
+}
+
+
+impl EventDataSelection {
+    pub fn from(data: EventDataSelectionInput) -> Self {
+        EventDataSelection {
+            event: data.event.map_or_else(|| {
+                EventFields::new(true)
+            }, |event| {
+                EventFields::from(event)
+            })
+        }
+    }
+}
+
+
+#[derive(InputObject, Clone)]
+#[graphql(name = "CallDataSelection")]
+pub struct CallDataSelectionInput {
+    pub call: Option<CallFieldsInput>,
+    pub extrinsic: Option<ExtrinsicFieldsInput>,
+}
+
+
+impl CallDataSelection {
+    pub fn from(data: CallDataSelectionInput) -> Self {
+        CallDataSelection {
+            call: data.call.map_or_else(|| {
+                CallFields::new(true)
+            }, |call| {
+                CallFields::from(call)
+            }),
+            extrinsic: data.extrinsic.map_or_else(|| {
+                ExtrinsicFields::new(true)
+            }, |extrinsic| {
+                ExtrinsicFields::from(extrinsic)
+            }),
+        }
+    }
+}
+
+
+#[derive(InputObject, Clone)]
+#[graphql(name = "EventSelection")]
+pub struct EventSelectionInput {
+    pub name: String,
+    pub data: Option<EventDataSelectionInput>,
+}
+
+
+impl EventSelection {
+    pub fn from(selection: EventSelectionInput) -> Self {
+        EventSelection {
+            name: selection.name,
+            data: selection.data.map_or_else(|| {
+                EventDataSelection::new(true)
+            }, |data| {
+                EventDataSelection::from(data)
+            }),
+        }
+    }
+}
+
+
+#[derive(InputObject, Clone)]
+pub struct CallSelectionInput {
+    pub name: String,
+    pub data: Option<CallDataSelectionInput>,
+}
+
+
+impl CallSelection {
+    pub fn from(selection: CallSelectionInput) -> Self {
+        CallSelection {
+            name: selection.name,
+            data: selection.data.map_or_else(|| {
+                CallDataSelection::new(true)
+            }, |data| {
+                CallDataSelection::from(data)
+            }),
+        }
     }
 }
 
@@ -101,37 +229,44 @@ impl QueryRoot {
         &self,
         ctx: &Context<'_>,
         limit: i32,
-        #[graphql(default = 0)] from_block: i32,
+        #[graphql(default = 0)]
+        from_block: i32,
         to_block: Option<i32>,
-        events: Option<Vec<EventSelection>>,
-        calls: Option<Vec<CallSelection>>,
+        #[graphql(name = "events")]
+        event_selections: Option<Vec<EventSelectionInput>>,
+        #[graphql(name = "calls")]
+        call_selections: Option<Vec<CallSelectionInput>>,
         include_all_blocks: Option<bool>,
     ) -> Result<Vec<Batch>> {
         let pool = ctx.data::<Pool<Postgres>>()?;
-        let db_timer = ctx.data::<Arc<Mutex<DbTimer>>>()?;
-        let call_loader = DataLoader::new(
-            CallLoader::new(pool.clone(), calls.clone(), events.clone(), db_timer.clone()),
-            actix_web::rt::spawn
-        );
-        let extrinsic_loader = DataLoader::new(
-            ExtrinsicLoader::new(pool.clone(), calls.clone(), events.clone(), db_timer.clone()),
-            actix_web::rt::spawn
-        );
-        let event_loader = DataLoader::new(
-            EventLoader::new(pool.clone(), events.clone(), db_timer.clone()),
-            actix_web::rt::spawn
-        );
-        let batch_context = Arc::new(BatchContext::new(call_loader, extrinsic_loader, event_loader));
-        let timer = DB_TIME_SPENT_SECONDS.with_label_values(&["block"]).start_timer();
-        let query_start = SystemTime::now().duration_since(UNIX_EPOCH)?;
-        let blocks = get_blocks(pool, limit, from_block, to_block, events, calls, include_all_blocks).await?;
-        let query_finish = SystemTime::now().duration_since(UNIX_EPOCH)?;
-        db_timer.lock().unwrap().add_interval((query_start, query_finish));
-        let batch = blocks.into_iter()
-            .map(|block| Batch::new(block, batch_context.clone()))
-            .collect();
-        timer.observe_duration();
+        let mut events = Vec::new();
+        if let Some(selections) = event_selections {
+            for selection in selections {
+                events.push(EventSelection::from(selection));
+            }
+        }
+        let mut calls = Vec::new();
+        if let Some(selections) = call_selections {
+            for selection in selections {
+                calls.push(CallSelection::from(selection));
+            }
+        }
+        let include_all_blocks = include_all_blocks.unwrap_or(false);
+        let batch = get_batch(pool, limit, from_block, to_block, events, calls, include_all_blocks).await?;
         Ok(batch)
+
+        // let db_timer = ctx.data::<Arc<Mutex<DbTimer>>>()?;
+        // let batch_context = Arc::new(BatchContext::new(call_loader, extrinsic_loader, event_loader));
+        // let timer = DB_TIME_SPENT_SECONDS.with_label_values(&["block"]).start_timer();
+        // let query_start = SystemTime::now().duration_since(UNIX_EPOCH)?;
+        // let blocks = get_blocks(pool, limit, from_block, to_block, events, calls, include_all_blocks).await?;
+        // let query_finish = SystemTime::now().duration_since(UNIX_EPOCH)?;
+        // db_timer.lock().unwrap().add_interval((query_start, query_finish));
+        // let batch = blocks.into_iter()
+        //     .map(|block| Batch::new(block, batch_context.clone()))
+        //     .collect();
+        // timer.observe_duration();
+        // Ok(batch)
     }
 
     async fn metadata(&self, ctx: &Context<'_>) -> Result<Vec<Metadata>> {

@@ -1,5 +1,6 @@
 use crate::entities::{BlockHeader, Extrinsic, Call, Event, Metadata, Status};
-use sqlx::{Error, Pool, Postgres};
+use crate::error::Error;
+use sqlx::{Pool, Postgres};
 
 
 pub async fn get_blocks(

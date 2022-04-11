@@ -9,6 +9,7 @@ mod repository;
 mod server;
 mod metrics;
 mod services;
+mod error;
 
 
 #[actix_web::main]

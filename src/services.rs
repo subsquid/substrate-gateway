@@ -1,7 +1,8 @@
 use crate::entities::{Batch, Event, Call, Extrinsic, BlockHeader};
 use crate::repository;
+use crate::error::Error;
 use std::collections::HashMap;
-use sqlx::{Error, Postgres, Pool};
+use sqlx::{Postgres, Pool};
 
 
 pub struct ParentCallFields {

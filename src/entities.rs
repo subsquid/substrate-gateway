@@ -1,13 +1,12 @@
 use async_graphql::SimpleObject;
 use chrono::{DateTime, Utc};
-use serde::{Serialize, Deserialize};
 use sqlx::FromRow;
 
 
 #[derive(FromRow, SimpleObject, Debug)]
 pub struct BlockHeader {
     pub id: String,
-    pub height: i32,
+    pub height: i64,
     pub hash: String,
     pub parent_hash: String,
     pub timestamp: DateTime<Utc>,
@@ -16,111 +15,50 @@ pub struct BlockHeader {
 }
 
 
-#[derive(FromRow, Clone, Debug, Serialize, Deserialize)]
-pub struct Extrinsic {
-    pub id: String,
-    #[sqlx(default)]
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub block_id: Option<String>,
-    #[sqlx(default)]
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub index_in_block: Option<i32>,
-    #[sqlx(default)]
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub signature: Option<serde_json::Value>,
-    #[sqlx(default)]
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub success: Option<bool>,
-    #[sqlx(default)]
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub call_id: Option<String>,
-    #[sqlx(default)]
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub hash: Option<String>,
-    pub pos: i32,
-    #[serde(skip)]
-    pub _call_id: String,
-}
-
-
-#[derive(FromRow, Clone, Debug, Serialize, Deserialize)]
-pub struct Call {
-    pub id: String,
-    #[sqlx(default)]
-    #[serde(skip)]
-    pub block_id: String,
-    #[sqlx(default)]
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub extrinsic_id: Option<String>,
-    #[sqlx(default)]
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub parent_id: Option<String>,
-    #[sqlx(default)]
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub success: Option<bool>,
-    #[sqlx(default)]
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub name: Option<String>,
-    #[sqlx(default)]
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub args: Option<serde_json::Value>,
-    pub pos: i32,
-    #[serde(skip)]
-    pub _name: String,
-    #[serde(skip)]
-    pub _extrinsic_id: String,
-}
-
-
-#[derive(FromRow, Clone, Debug, Serialize, Deserialize)]
+#[derive(sqlx::FromRow, Debug)]
 pub struct Event {
-    pub id: String,
-    #[sqlx(default)]
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub block_id: Option<String>,
-    #[sqlx(default)]
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub index_in_block: Option<i32>,
-    #[sqlx(default)]
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub phase: Option<String>,
-    #[sqlx(default)]
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub extrinsic_id: Option<String>,
-    #[sqlx(default)]
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub call_id: Option<String>,
-    #[sqlx(default)]
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub name: Option<String>,
-    #[sqlx(default)]
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub args: Option<serde_json::Value>,
-    pub pos: i32,
+    pub block_id: String,
+    pub name: String,
+    pub data: serde_json::Value,
+}
+
+
+#[derive(sqlx::FromRow, Debug)]
+pub struct Call {
+    pub block_id: String,
+    pub name: String,
+    pub data: serde_json::Value,
+}
+
+
+#[derive(sqlx::FromRow, Debug)]
+pub struct Extrinsic {
+    pub block_id: String,
+    pub data: serde_json::Value,
 }
 
 
 #[derive(SimpleObject, Debug)]
 pub struct Batch {
     pub header: BlockHeader,
-    pub extrinsics: Option<Vec<serde_json::Value>>,
-    pub calls: Option<Vec<serde_json::Value>>,
-    pub events: Option<Vec<serde_json::Value>>,
+    pub extrinsics: Vec<serde_json::Value>,
+    pub calls: Vec<serde_json::Value>,
+    pub events: Vec<serde_json::Value>,
 }
 
 
 #[derive(FromRow, SimpleObject, Debug)]
 pub struct Metadata {
-    id: String,
-    spec_name: String,
-    spec_version: i32,
-    block_height: i32,
-    block_hash: String,
-    hex: String,
+    pub id: String,
+    pub spec_name: String,
+    pub spec_version: i64,
+    pub block_height: i64,
+    pub block_hash: String,
+    pub hex: String,
 }
 
 
 #[derive(FromRow, SimpleObject, Debug)]
 pub struct Status {
-    pub head: i32,
+    pub head: i64,
 }

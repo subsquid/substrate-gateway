@@ -288,7 +288,6 @@ dependencies = [
  "lazy_static",
  "mime",
  "prometheus",
- "serde",
  "serde_json",
  "sqlx",
 ]

@@ -1,15 +1,16 @@
+use crate::archive::ArchiveService;
 use crate::entities::{Batch, Metadata, Status};
-use crate::repository::{get_metadata, get_status};
 use crate::metrics::DB_TIME_SPENT_SECONDS;
-use crate::services::{
-    get_batch, EventSelection, EventDataSelection, EventFields, CallSelection,
-    ParentCallFields, ExtrinsicFields, CallFields, CallDataSelection
+use crate::archive::cockroach::CockroachArchive;
+use crate::archive::selection::{
+    ParentCallFields, CallFields, ExtrinsicFields, EventFields,
+    EventDataSelection, CallDataSelection, EventSelection, CallSelection,
 };
 use sqlx::{Pool, Postgres};
 use async_graphql::{Context, Object, Result, InputObject};
 
 
-#[derive(InputObject, Clone)]
+#[derive(InputObject, Clone, Debug)]
 #[graphql(name = "ParentCallFields")]
 pub struct ParentCallFieldsInput {
     #[graphql(name="_all")]
@@ -34,7 +35,7 @@ impl ParentCallFields {
 }
 
 
-#[derive(InputObject, Clone)]
+#[derive(InputObject, Clone, Debug)]
 #[graphql(name = "CallFields")]
 pub struct CallFieldsInput {
     #[graphql(name="_all")]
@@ -63,7 +64,7 @@ impl CallFields {
 }
 
 
-#[derive(InputObject, Clone)]
+#[derive(InputObject, Clone, Debug)]
 #[graphql(name = "ExtrinsicFields")]
 pub struct ExtrinsicFieldsInput {
     #[graphql(name="_all")]
@@ -94,7 +95,7 @@ impl ExtrinsicFields {
 }
 
 
-#[derive(InputObject, Clone)]
+#[derive(InputObject, Clone, Debug)]
 #[graphql(name = "EventFields")]
 pub struct EventFieldsInput {
     #[graphql(name="_all")]
@@ -239,6 +240,7 @@ impl QueryRoot {
         include_all_blocks: Option<bool>,
     ) -> Result<Vec<Batch>> {
         let pool = ctx.data::<Pool<Postgres>>()?;
+        let archive = CockroachArchive::new(pool.clone());
         let mut events = Vec::new();
         if let Some(selections) = event_selections {
             for selection in selections {
@@ -252,35 +254,24 @@ impl QueryRoot {
             }
         }
         let include_all_blocks = include_all_blocks.unwrap_or(false);
-        let batch = get_batch(pool, limit, from_block, to_block, events, calls, include_all_blocks).await?;
+        let batch = archive.batch(limit, from_block, to_block, &events, &calls, include_all_blocks).await?;
         Ok(batch)
-
-        // let db_timer = ctx.data::<Arc<Mutex<DbTimer>>>()?;
-        // let batch_context = Arc::new(BatchContext::new(call_loader, extrinsic_loader, event_loader));
-        // let timer = DB_TIME_SPENT_SECONDS.with_label_values(&["block"]).start_timer();
-        // let query_start = SystemTime::now().duration_since(UNIX_EPOCH)?;
-        // let blocks = get_blocks(pool, limit, from_block, to_block, events, calls, include_all_blocks).await?;
-        // let query_finish = SystemTime::now().duration_since(UNIX_EPOCH)?;
-        // db_timer.lock().unwrap().add_interval((query_start, query_finish));
-        // let batch = blocks.into_iter()
-        //     .map(|block| Batch::new(block, batch_context.clone()))
-        //     .collect();
-        // timer.observe_duration();
-        // Ok(batch)
     }
 
     async fn metadata(&self, ctx: &Context<'_>) -> Result<Vec<Metadata>> {
         let pool = ctx.data::<sqlx::Pool<sqlx::Postgres>>()?;
+        let archive = CockroachArchive::new(pool.clone());
         let timer = DB_TIME_SPENT_SECONDS.with_label_values(&["metadata"]).start_timer();
-        let metadata = get_metadata(&pool).await?;
+        let metadata = archive.metadata().await?;
         timer.observe_duration();
         Ok(metadata)
     }
 
     async fn status(&self, ctx: &Context<'_>) -> Result<Status> {
         let pool = ctx.data::<sqlx::Pool<sqlx::Postgres>>()?;
+        let archive = CockroachArchive::new(pool.clone());
         let timer = DB_TIME_SPENT_SECONDS.with_label_values(&["block"]).start_timer();
-        let status = get_status(&pool).await?;
+        let status = archive.status().await?;
         timer.observe_duration();
         Ok(status)
     }

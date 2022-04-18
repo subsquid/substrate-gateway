@@ -5,11 +5,10 @@ use graphql::QueryRoot;
 
 mod entities;
 mod graphql;
-mod repository;
 mod server;
 mod metrics;
-mod services;
 mod error;
+mod archive;
 
 
 #[actix_web::main]

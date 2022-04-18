@@ -23,12 +23,19 @@ impl ArchiveService for CockroachArchive {
     ) -> Result<Vec<Batch>, Error> {
         let calls = self.get_calls(limit, from_block, to_block, &call_selections).await?;
         let events = self.get_events(limit, from_block, to_block, &event_selections).await?;
-        let block_ids = self.get_block_ids(&calls, &events, limit);
-        let blocks = self.get_blocks_by_ids(&block_ids).await?;
+        let mut block_ids = Vec::new();
+        let blocks = if include_all_blocks {
+            let blocks = self.get_blocks(from_block, to_block, limit).await?;
+            block_ids = blocks.iter().map(|block| block.id.clone()).collect();
+            blocks
+        } else {
+            block_ids = self.get_block_ids(&calls, &events, limit);
+            self.get_blocks_by_ids(&block_ids).await?
+        };
         let extrinsics = self.get_extrinsics(&event_selections, &call_selections, &block_ids, &events, &calls).await?;
         let events_calls = self.get_events_calls(&event_selections, &block_ids, &events).await?;
         let batch = self.create_batch(blocks, events, calls, extrinsics, events_calls);
-        Ok(batch) 
+        Ok(batch)
     }
 
     async fn metadata(&self) -> Result<Vec<Metadata>, Error> {
@@ -257,7 +264,7 @@ impl CockroachArchive {
         block_ids
     }
 
-    pub async fn get_blocks_by_ids(&self, ids: &Vec<String>) -> Result<Vec<BlockHeader>, Error> {
+    async fn get_blocks_by_ids(&self, ids: &Vec<String>) -> Result<Vec<BlockHeader>, Error> {
         let query = "SELECT
                 id,
                 height,
@@ -270,6 +277,31 @@ impl CockroachArchive {
             WHERE id = ANY($1)";
         let blocks = sqlx::query_as::<_, BlockHeader>(&query)
             .bind(ids)
+            .fetch_all(&self.pool)
+            .await?;
+        Ok(blocks)
+    }
+
+    async fn get_blocks(
+        &self,
+        from_block: i32,
+        to_block: Option<i32>,
+        limit: i32,
+    ) -> Result<Vec<BlockHeader>, Error> {
+        let query = "SELECT
+                id,
+                height,
+                hash,
+                parent_hash,
+                timestamp,
+                spec_id,
+                validator
+            FROM block
+            WHERE height >= $1 AND ($2 IS null OR height < $2) LIMIT $3";
+        let blocks = sqlx::query_as::<_, BlockHeader>(&query)
+            .bind(from_block)
+            .bind(to_block)
+            .bind(limit)
             .fetch_all(&self.pool)
             .await?;
         Ok(blocks)

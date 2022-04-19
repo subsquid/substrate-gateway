@@ -267,6 +267,13 @@ impl QueryRoot {
         Ok(metadata)
     }
 
+    async fn metadata_by_id(&self, ctx: &Context<'_>, id: String) -> Result<Option<Metadata>> {
+        let pool = ctx.data::<sqlx::Pool<sqlx::Postgres>>()?;
+        let archive = CockroachArchive::new(pool.clone());
+        let metadata = archive.metadata_by_id(id).await?;
+        Ok(metadata)
+    }
+
     async fn status(&self, ctx: &Context<'_>) -> Result<Status> {
         let pool = ctx.data::<sqlx::Pool<sqlx::Postgres>>()?;
         let archive = CockroachArchive::new(pool.clone());

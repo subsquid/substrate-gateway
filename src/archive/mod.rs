@@ -17,5 +17,6 @@ pub trait ArchiveService {
         include_all_blocks: bool
     ) -> Result<Vec<Batch>, Error>;
     async fn metadata(&self) -> Result<Vec<Metadata>, Error>;
+    async fn metadata_by_id(&self, id: String) -> Result<Option<Metadata>, Error>;
     async fn status(&self) -> Result<Status, Error>;
 }

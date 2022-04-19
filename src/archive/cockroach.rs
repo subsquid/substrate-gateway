@@ -46,6 +46,16 @@ impl ArchiveService for CockroachArchive {
         Ok(metadata)
     }
 
+    async fn metadata_by_id(&self, id: String) -> Result<Option<Metadata>, Error> {
+        let query = "SELECT id, spec_name, spec_version, block_height, block_hash, hex
+            FROM metadata WHERE id = $1";
+        let metadata = sqlx::query_as::<_, Metadata>(query)
+            .bind(id)
+            .fetch_optional(&self.pool)
+            .await?;
+        Ok(metadata)
+    }
+
     async fn status(&self) -> Result<Status, Error> {
         let query = "SELECT height as head FROM block ORDER BY height DESC LIMIT 1";
         let status = sqlx::query_as::<_, Status>(query)

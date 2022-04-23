@@ -324,6 +324,23 @@ impl CallDataSelection {
 
 
 #[derive(Debug)]
+pub struct EvmLogDataSelection {
+    pub tx_hash: bool,
+    pub substrate: EventDataSelection,
+}
+
+
+impl EvmLogDataSelection {
+    pub fn new(value: bool) -> Self {
+        EvmLogDataSelection {
+            tx_hash: value,
+            substrate: EventDataSelection::new(value),
+        }
+    }
+}
+
+
+#[derive(Debug)]
 pub struct EventSelection {
     pub name: String,
     pub data: EventDataSelection,
@@ -334,4 +351,12 @@ pub struct EventSelection {
 pub struct CallSelection {
     pub name: String,
     pub data: CallDataSelection,
+}
+
+
+#[derive(Debug)]
+pub struct EvmLogSelection {
+    pub contract: String,
+    pub filter: Vec<Vec<String>>,
+    pub data: EvmLogDataSelection,
 }

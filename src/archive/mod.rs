@@ -1,6 +1,6 @@
 use crate::entities::{Batch, Metadata, Status};
 use crate::error::Error;
-use selection::{EventSelection, CallSelection};
+use selection::{EventSelection, CallSelection, EvmLogSelection};
 
 pub mod selection;
 pub mod cockroach;
@@ -12,6 +12,7 @@ pub trait ArchiveService {
         limit: i32,
         from_block: i32,
         to_block: Option<i32>,
+        evm_log_selections: &Vec<EvmLogSelection>,
         event_selections: &Vec<EventSelection>,
         call_selections: &Vec<CallSelection>,
         include_all_blocks: bool

@@ -1,7 +1,7 @@
 use std::env;
 use async_graphql::{EmptyMutation, EmptySubscription, Schema};
 use sqlx::postgres::PgPoolOptions;
-use graphql::QueryRoot;
+use graphql::{QueryRoot, EvmSupport};
 
 mod entities;
 mod graphql;
@@ -21,6 +21,10 @@ async fn main() -> std::io::Result<()> {
         .expect("DATABASE_MAX_CONNECTIONS env variable is required")
         .parse::<u32>()
         .unwrap();
+    let evm_support = env::var("EVM_SUPPORT")
+        .expect("EVM_SUPPORT env variable is required")
+        .parse::<bool>()
+        .unwrap();
     let pool = PgPoolOptions::new()
         .max_connections(max_connections)
         .connect(&database_url)
@@ -29,6 +33,7 @@ async fn main() -> std::io::Result<()> {
 
     let schema = Schema::build(QueryRoot, EmptyMutation, EmptySubscription)
         .data(pool)
+        .data(EvmSupport(evm_support))
         .finish();
     server::run(schema).await
 }

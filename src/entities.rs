@@ -38,6 +38,14 @@ pub struct Extrinsic {
 }
 
 
+#[derive(sqlx::FromRow, Debug)]
+pub struct EvmLog {
+    pub block_id: String,
+    pub selection_index: i16,
+    pub data: serde_json::Value,
+}
+
+
 #[derive(SimpleObject, Debug)]
 pub struct Batch {
     pub header: BlockHeader,

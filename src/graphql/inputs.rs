@@ -1,6 +1,7 @@
 use crate::archive::selection::{
     ParentCallFields, CallFields, ExtrinsicFields, EventFields,
     EventDataSelection, CallDataSelection, EventSelection, CallSelection,
+    EvmLogDataSelection, EvmLogSelection
 };
 use async_graphql::InputObject;
 
@@ -209,6 +210,52 @@ impl CallSelection {
                 CallDataSelection::new(true)
             }, |data| {
                 CallDataSelection::from(data)
+            }),
+        }
+    }
+}
+
+
+#[derive(InputObject, Clone)]
+#[graphql(name = "EvmLogDataSelection")]
+pub struct EvmLogDataSelectionInput {
+    pub tx_hash: Option<bool>,
+    pub substrate: Option<EventDataSelectionInput>,
+}
+
+
+impl EvmLogDataSelection {
+    pub fn from(data: EvmLogDataSelectionInput) -> Self {
+        EvmLogDataSelection {
+            tx_hash: data.tx_hash.unwrap_or(false),
+            substrate: data.substrate.map_or_else(|| {
+                EventDataSelection::new(true)
+            }, |substrate| {
+                EventDataSelection::from(substrate)
+            }),
+        }
+    }
+}
+
+
+#[derive(InputObject, Clone)]
+#[graphql(name = "EvmLogSelection")]
+pub struct EvmLogSelectionInput {
+    pub contract: String,
+    pub filter: Option<Vec<Vec<String>>>,
+    pub data: Option<EvmLogDataSelectionInput>,
+}
+
+
+impl EvmLogSelection {
+    pub fn from(selection: EvmLogSelectionInput) -> Self {
+        EvmLogSelection {
+            contract: selection.contract,
+            filter: selection.filter.unwrap_or_default(),
+            data: selection.data.map_or_else(|| {
+                EvmLogDataSelection::new(true)
+            }, |data| {
+                EvmLogDataSelection::from(data)
             }),
         }
     }

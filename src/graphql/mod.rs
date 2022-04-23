@@ -1,13 +1,19 @@
 use crate::archive::ArchiveService;
 use crate::archive::cockroach::CockroachArchive;
-use crate::archive::selection::{EventSelection, CallSelection};
+use crate::archive::selection::{EventSelection, CallSelection, EvmLogSelection};
 use crate::entities::{Batch, Metadata, Status};
 use crate::metrics::DB_TIME_SPENT_SECONDS;
 use sqlx::{Pool, Postgres};
 use async_graphql::{Context, Object, Result};
-use inputs::{EventSelectionInput, CallSelectionInput};
+use inputs::{EventSelectionInput, CallSelectionInput, EvmLogSelectionInput};
 
 mod inputs;
+
+pub struct EvmSupport(pub bool);
+
+fn is_evm_supported(ctx: &Context<'_>) -> bool {
+    ctx.data_unchecked::<EvmSupport>().0
+}
 
 pub struct QueryRoot;
 
@@ -20,6 +26,8 @@ impl QueryRoot {
         #[graphql(default = 0)]
         from_block: i32,
         to_block: Option<i32>,
+        #[graphql(name = "emvLogs", visible = "is_evm_supported")]
+        evm_log_selections: Option<Vec<EvmLogSelectionInput>>,
         #[graphql(name = "events")]
         event_selections: Option<Vec<EventSelectionInput>>,
         #[graphql(name = "calls")]
@@ -40,8 +48,16 @@ impl QueryRoot {
                 calls.push(CallSelection::from(selection));
             }
         }
+        let mut evm_logs = Vec::new();
+        if let Some(selections) = evm_log_selections {
+            for selection in selections {
+                evm_logs.push(EvmLogSelection::from(selection));
+            }
+        }
         let include_all_blocks = include_all_blocks.unwrap_or(false);
-        let batch = archive.batch(limit, from_block, to_block, &events, &calls, include_all_blocks).await?;
+        let batch = archive
+            .batch(limit, from_block, to_block, &evm_logs, &events, &calls, include_all_blocks)
+            .await?;
         Ok(batch)
     }
 

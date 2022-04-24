@@ -2,9 +2,32 @@ use super::ArchiveService;
 use super::selection::{CallSelection, EventSelection, EvmLogSelection};
 use crate::entities::{Batch, Metadata, Status, Call, Event, Extrinsic, BlockHeader, EvmLog};
 use crate::error::Error;
+use serde_json::{Value, Map};
 use std::collections::HashMap;
 use sqlx::{Pool, Postgres};
 
+// removes duplicates and merge fields between two entities with the same id
+fn unify_and_merge(values: Vec<Value>, fields: Vec<&str>) -> Vec<Value> {
+    let mut instances_by_id = HashMap::new();
+    for value in values {
+        let id = value.get("id").unwrap().clone().as_str().unwrap().to_string();
+        instances_by_id.entry(id).or_insert_with(Vec::new).push(value);
+    }
+    instances_by_id.values()
+        .into_iter()
+        .map(|duplicates| {
+            let mut object = Map::new();
+            for field in &fields {
+                let instance = duplicates.into_iter()
+                    .find(|instance| instance.get(field).is_some());
+                if let Some(instance) = instance{
+                    object.insert(field.to_string(), instance.get(field).unwrap().clone());
+                }
+            }
+            Value::from(object)
+        })
+        .collect()
+}
 
 pub struct CockroachArchive {
     pool: Pool<Postgres>,
@@ -521,8 +544,7 @@ impl CockroachArchive {
             .await?;
         Ok(calls)
     }
-    
-    
+
     fn create_batch(
         &self,
         blocks: Vec<BlockHeader>,
@@ -562,10 +584,14 @@ impl CockroachArchive {
         }
         blocks.into_iter()
             .map(|block| {
+                let events = events_by_block.remove(&block.id).unwrap_or_default();
+                let event_fields = vec!["id", "block_id", "index_in_block", "phase",
+                                        "extrinsic_id", "call_id", "name", "args", "pos"];
+                let deduplicated_events = unify_and_merge(events, event_fields);
                 Batch {
                     extrinsics: extrinsics_by_block.remove(&block.id).unwrap_or_default(),
                     calls: calls_by_block.remove(&block.id).unwrap_or_default(),
-                    events: events_by_block.remove(&block.id).unwrap_or_default(),
+                    events: deduplicated_events,
                     header: block,
                 }
             })

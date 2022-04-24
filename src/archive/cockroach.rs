@@ -290,8 +290,7 @@ impl CockroachArchive {
                         FROM event AS sub_event
                         WHERE sub_event.extrinsic_id = event.extrinsic_id AND sub_event.name = 'ethereum.Executed'
                     )";
-                    build_object_args.push("txHash".to_string());
-                    build_object_args.push(tx_hash_subquery.to_string());
+                    build_object_args.push(format!("'txHash', {}", tx_hash_subquery));
                 }
                 let build_object_fields = build_object_args.join(", ");
                 let to_block = to_block.map_or("null".to_string(), |to_block| to_block.to_string());
@@ -299,7 +298,7 @@ impl CockroachArchive {
                     "name = 'evm.Log'".to_string(),
                     format!("block.height >= {}", from_block),
                     format!("({} IS null OR block.height < {})", to_block, to_block),
-                    format!("args ->> 'address' = '{}'", &selection.contract),
+                    format!("args -> 'address' = '\"{}\"'", &selection.contract),
                 ];
                 let topics_filters: Vec<String> = selection.filter.iter()
                     .enumerate()

@@ -58,7 +58,8 @@ impl ArchiveService for CockroachArchive {
             evm_logs = evm_logs.into_iter().filter(|log| block_ids.contains(&log.block_id)).collect();
             self.get_blocks_by_ids(&block_ids).await?
         };
-        let extrinsics = self.get_extrinsics(&event_selections, &call_selections, &events, &calls).await?;
+        let extrinsics = self.get_extrinsics(&event_selections, &call_selections, &evm_log_selections,
+                                             &events, &calls, &evm_logs).await?;
         let events_calls = self.get_events_calls(&event_selections, &events).await?;
         let batch = self.create_batch(blocks, events, calls, extrinsics, events_calls, evm_logs);
         Ok(batch)
@@ -456,8 +457,10 @@ impl CockroachArchive {
         &self,
         event_selections: &Vec<EventSelection>,
         call_selections: &Vec<CallSelection>,
+        evm_log_selections: &Vec<EvmLogSelection>,
         events: &Vec<Event>,
         calls: &Vec<Call>,
+        evm_logs: &Vec<EvmLog>,
     ) -> Result<Vec<Extrinsic>, Error> {
         let mut extrinsics_info = HashMap::new();
         for event in events {
@@ -488,7 +491,17 @@ impl CockroachArchive {
                 }
             }
         }
-    
+        for log in evm_logs {
+            let selection = &evm_log_selections[log.selection_index as usize];
+            let mut fields = selection.data.substrate.event.extrinsic.selected_fields();
+            if !fields.is_empty() {
+                fields.push("id".to_string());
+                fields.push("pos".to_string());
+                let extrinsic_id = log.data.get("extrinsic_id")
+                    .expect("extrinsic_id should be loaded").as_str().unwrap();
+                extrinsics_info.insert(extrinsic_id.clone(), fields);
+            }
+        }
         let query = extrinsics_info.into_iter()
             .map(|(key, value)| {
                 let build_object_fields = value

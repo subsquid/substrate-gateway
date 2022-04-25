@@ -61,7 +61,9 @@ impl ArchiveService for CockroachArchive {
         let extrinsics = self.get_extrinsics(&event_selections, &call_selections, &evm_log_selections,
                                              &events, &calls, &evm_logs).await?;
         let events_calls = self.get_events_calls(&event_selections, &events).await?;
-        let batch = self.create_batch(blocks, events, calls, extrinsics, events_calls, evm_logs);
+        let evm_logs_calls = self.get_emv_logs_calls(&evm_log_selections, &evm_logs).await?;
+        let batch = self.create_batch(blocks, events, calls, extrinsics, events_calls,
+                                      evm_logs, evm_logs_calls);
         Ok(batch)
     }
 
@@ -518,8 +520,7 @@ impl CockroachArchive {
             .await?;
         Ok(extrinsics)
     }
-    
-    
+
     async fn get_events_calls(
         &self,
         event_selections: &Vec<EventSelection>,
@@ -558,6 +559,41 @@ impl CockroachArchive {
         Ok(calls)
     }
 
+    async fn get_emv_logs_calls(
+        &self,
+        evm_log_selections: &Vec<EvmLogSelection>,
+        evm_logs: &Vec<EvmLog>
+    ) -> Result<Vec<Call>, Error> {
+        let mut calls_info = HashMap::new();
+        for log in evm_logs {
+            let selection = &evm_log_selections[log.selection_index as usize];
+            let mut fields = selection.data.substrate.event.call.selected_fields();
+            if !fields.is_empty() {
+                fields.push("id".to_string());
+                fields.push("pos".to_string());
+                let call_id = log.data.get("call_id")
+                    .expect("call_id should be loaded").as_str().unwrap();
+                calls_info.insert(call_id.clone(), fields);
+            }
+        }
+        // check intersection between already loaded calls
+        let query = calls_info.into_iter()
+            .map(|(key, value)| {
+                let build_object_fields = value
+                    .iter()
+                    .map(|field| format!("'{}', {}", &field, &field))
+                    .collect::<Vec<String>>()
+                    .join(", ");
+                format!("(SELECT block_id, name, jsonb_build_object({}) as data FROM call WHERE id = '{}')", &build_object_fields, &key)
+            })
+            .collect::<Vec<String>>()
+            .join(" UNION ");
+        let calls = sqlx::query_as::<_, Call>(&query)
+            .fetch_all(&self.pool)
+            .await?;
+        Ok(calls)
+    }
+
     fn create_batch(
         &self,
         blocks: Vec<BlockHeader>,
@@ -566,6 +602,7 @@ impl CockroachArchive {
         extrinsics: Vec<Extrinsic>,
         events_calls: Vec<Call>,
         evm_logs: Vec<EvmLog>,
+        evm_logs_calls: Vec<Call>,
     ) -> Vec<Batch> {
         let mut events_by_block = HashMap::new();
         for event in events {
@@ -595,15 +632,24 @@ impl CockroachArchive {
                 .or_insert_with(Vec::new)
                 .push(call.data);
         }
+        for call in evm_logs_calls {
+            calls_by_block.entry(call.block_id)
+                .or_insert_with(Vec::new)
+                .push(call.data);
+        }
         blocks.into_iter()
             .map(|block| {
                 let events = events_by_block.remove(&block.id).unwrap_or_default();
                 let event_fields = vec!["id", "block_id", "index_in_block", "phase",
                                         "extrinsic_id", "call_id", "name", "args", "pos"];
                 let deduplicated_events = unify_and_merge(events, event_fields);
+                let calls = calls_by_block.remove(&block.id).unwrap_or_default();
+                let call_fields = vec!["id", "parent_id", "block_id", "extrinsic_id", "success",
+                                       "name", "args", "pos"];
+                let deduplicated_calls = unify_and_merge(calls, call_fields);
                 Batch {
                     extrinsics: extrinsics_by_block.remove(&block.id).unwrap_or_default(),
-                    calls: calls_by_block.remove(&block.id).unwrap_or_default(),
+                    calls: deduplicated_calls,
                     events: deduplicated_events,
                     header: block,
                 }

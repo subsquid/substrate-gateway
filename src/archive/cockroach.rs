@@ -640,7 +640,7 @@ impl CockroachArchive {
         blocks.into_iter()
             .map(|block| {
                 let events = events_by_block.remove(&block.id).unwrap_or_default();
-                let event_fields = vec!["id", "block_id", "index_in_block", "phase",
+                let event_fields = vec!["id", "block_id", "index_in_block", "phase", "txHash",
                                         "extrinsic_id", "call_id", "name", "args", "pos"];
                 let deduplicated_events = unify_and_merge(events, event_fields);
                 let calls = calls_by_block.remove(&block.id).unwrap_or_default();

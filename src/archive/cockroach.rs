@@ -155,7 +155,7 @@ impl CockroachArchive {
                                         FROM call
                                         INNER JOIN block
                                         ON call.block_id = block.id
-                                        WHERE call.name = '{}' AND block.height >= {} AND ({} IS null OR block.height < {})
+                                        WHERE call.name = '{}' AND block.height >= {} AND ({} IS null OR block.height <= {})
                                         GROUP BY call.block_id
                                         LIMIT {}
                                     )
@@ -195,7 +195,7 @@ impl CockroachArchive {
                         FROM call
                         INNER JOIN block
                         ON call.block_id = block.id
-                        WHERE call.name = '{}' AND block.height >= {} AND ({} IS null OR block.height < {})
+                        WHERE call.name = '{}' AND block.height >= {} AND ({} IS null OR block.height <= {})
                         GROUP BY call.block_id
                         LIMIT {}
                     )", &build_object_fields, &selection.name, from_block, to_block, to_block, limit)
@@ -258,7 +258,7 @@ impl CockroachArchive {
                     FROM event
                     INNER JOIN block
                     ON event.block_id = block.id
-                    WHERE event.name = '{}' AND block.height >= {} AND ({} IS null OR block.height < {})
+                    WHERE event.name = '{}' AND block.height >= {} AND ({} IS null OR block.height <= {})
                     GROUP BY block_id
                     ORDER BY block_id
                     LIMIT {}
@@ -323,7 +323,7 @@ impl CockroachArchive {
                 let mut filters = vec![
                     "name = 'evm.Log'".to_string(),
                     format!("block.height >= {}", from_block),
-                    format!("({} IS null OR block.height < {})", to_block, to_block),
+                    format!("({} IS null OR block.height <= {})", to_block, to_block),
                     format!("args -> 'address' = '\"{}\"'", &selection.contract),
                 ];
                 let topics_filters: Vec<String> = selection.filter.iter()
@@ -445,7 +445,7 @@ impl CockroachArchive {
                 spec_id,
                 validator
             FROM block
-            WHERE height >= $1 AND ($2 IS null OR height < $2) LIMIT $3";
+            WHERE height >= $1 AND ($2 IS null OR height <= $2) LIMIT $3";
         let blocks = sqlx::query_as::<_, BlockHeader>(&query)
             .bind(from_block)
             .bind(to_block)

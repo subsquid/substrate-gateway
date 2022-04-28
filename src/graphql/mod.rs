@@ -3,6 +3,8 @@ use crate::archive::cockroach::CockroachArchive;
 use crate::archive::selection::{EventSelection, CallSelection, EvmLogSelection};
 use crate::entities::{Batch, Metadata, Status};
 use crate::metrics::DB_TIME_SPENT_SECONDS;
+use serde_json::{Map, Value};
+use convert_case::{Casing, Case};
 use sqlx::{Pool, Postgres};
 use async_graphql::{Context, Object, Result};
 use inputs::{EventSelectionInput, CallSelectionInput, EvmLogSelectionInput};
@@ -13,6 +15,30 @@ pub struct EvmSupport(pub bool);
 
 fn is_evm_supported(ctx: &Context<'_>) -> bool {
     ctx.data_unchecked::<EvmSupport>().0
+}
+
+fn keys_to_camel_case(map: &mut Map<String, Value>) {
+    *map = std::mem::take(map)
+        .into_iter()
+        .map(|(k, v)| (k.to_case(Case::Camel), v))
+        .collect();
+}
+
+fn batch_to_camel_case(batch: &mut Vec<Batch>) {
+    for item in batch {
+        for call in &mut item.calls {
+            let map = call.as_object_mut().unwrap();
+            keys_to_camel_case(map);
+        }
+        for event in &mut item.events {
+            let map = event.as_object_mut().unwrap();
+            keys_to_camel_case(map);
+        }
+        for extrinsic in &mut item.extrinsics {
+            let map = extrinsic.as_object_mut().unwrap();
+            keys_to_camel_case(map);
+        }
+    }
 }
 
 pub struct QueryRoot;
@@ -55,9 +81,10 @@ impl QueryRoot {
             }
         }
         let include_all_blocks = include_all_blocks.unwrap_or(false);
-        let batch = archive
+        let mut batch = archive
             .batch(limit, from_block, to_block, &evm_logs, &events, &calls, include_all_blocks)
             .await?;
+        batch_to_camel_case(&mut batch);
         Ok(batch)
     }
 

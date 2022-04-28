@@ -536,9 +536,11 @@ impl CockroachArchive {
                 call_fields.push("id".to_string());
                 call_fields.push("pos".to_string());
                 let call_id = event.data.get("call_id")
-                    .expect("call_id should be loaded").as_str().unwrap();
-                // TODO: merge requirements from multiple events
-                calls_info.insert(call_id.clone(), call_fields);
+                    .expect("call_id should be loaded").as_str();
+                if let Some(call_id) = call_id {
+                    // TODO: merge requirements from multiple events
+                    calls_info.insert(call_id.clone(), call_fields);
+                }
             }
         }
         // check intersection between already loaded calls

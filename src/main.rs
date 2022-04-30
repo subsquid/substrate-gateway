@@ -1,14 +1,6 @@
 use std::env;
-use async_graphql::{EmptyMutation, EmptySubscription, Schema};
 use sqlx::postgres::PgPoolOptions;
-use graphql::{QueryRoot, EvmSupport};
-
-mod entities;
-mod graphql;
-mod server;
-mod metrics;
-mod error;
-mod archive;
+use archive_gateway::ArchiveGateway;
 
 
 #[actix_web::main]
@@ -30,10 +22,7 @@ async fn main() -> std::io::Result<()> {
         .connect(&database_url)
         .await
         .unwrap();
-
-    let schema = Schema::build(QueryRoot, EmptyMutation, EmptySubscription)
-        .data(pool)
-        .data(EvmSupport(evm_support))
-        .finish();
-    server::run(schema).await
+    ArchiveGateway::new(pool, evm_support)
+        .run()
+        .await
 }

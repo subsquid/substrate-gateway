@@ -321,7 +321,7 @@ impl CockroachArchive {
                 let build_object_fields = build_object_args.join(", ");
                 let to_block = to_block.map_or("null".to_string(), |to_block| to_block.to_string());
                 let mut filters = vec![
-                    "name = 'evm.Log'".to_string(),
+                    "name = 'EVM.Log'".to_string(),
                     format!("block.height >= {}", from_block),
                     format!("({} IS null OR block.height <= {})", to_block, to_block),
                     format!("args -> 'address' = '\"{}\"'", &selection.contract),

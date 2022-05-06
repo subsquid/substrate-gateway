@@ -314,7 +314,7 @@ impl CockroachArchive {
                     let tx_hash_subquery = "(
                         SELECT jsonb_extract_path_text(sub_event.args, '2')
                         FROM event AS sub_event
-                        WHERE sub_event.extrinsic_id = event.extrinsic_id AND sub_event.name = 'ethereum.Executed'
+                        WHERE sub_event.extrinsic_id = event.extrinsic_id AND sub_event.name = 'Ethereum.Executed'
                     )";
                     build_object_args.push(format!("'txHash', {}", tx_hash_subquery));
                 }

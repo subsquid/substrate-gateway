@@ -14,7 +14,7 @@ CREATE TABLE block (
     hash char(66) not null,
     parent_hash char(66) not null,
     timestamp timestamptz not null,
-    spec_id text not null references metadata,
+    spec_id text not null,
     validator varchar
 );
 

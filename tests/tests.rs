@@ -1,5 +1,5 @@
-use serde_json::{json, Value};
-use common::launch_gateway;
+use serde_json::json;
+use common::{launch_gateway, GatewayResponse, BatchResponse};
 
 mod common;
 
@@ -12,31 +12,12 @@ async fn test_parent_call_loaded() {
         .send()
         .await
         .unwrap();
-    let data = response
-        .json::<Value>()
-        .await
-        .unwrap();
-    let calls = data
-        .get("data")
-        .unwrap()
-        .get("batch")
-        .unwrap()
-        .get(0)
-        .unwrap()
-        .get("calls")
-        .unwrap()
-        .as_array()
-        .unwrap();
-    let requested_call = calls.iter()
-        .find(|call| {
-            let id = call.get("id").unwrap().as_str().unwrap();
-            id == "0000650677-000003-0f08a-000001".to_string()
-        });
-    let parent_call = calls.iter()
-        .find(|call| {
-            let id = call.get("id").unwrap().as_str().unwrap();
-            id == "0000650677-000003-0f08a".to_string()
-        });
+    let gateway_response = response.json::<GatewayResponse<BatchResponse>>().await.unwrap();
+    let batch = gateway_response.data.batch;
+    let requested_call = batch[0].calls.iter()
+        .find(|call| call.id == "0000650677-000003-0f08a-000001".to_string());
+    let parent_call = batch[0].calls.iter()
+        .find(|call| call.id == "0000650677-000003-0f08a".to_string());
     assert!(requested_call.is_some());
     assert!(parent_call.is_some());
 }
@@ -50,31 +31,12 @@ async fn test_parent_call_skipped() {
         .send()
         .await
         .unwrap();
-    let data = response
-        .json::<Value>()
-        .await
-        .unwrap();
-    let calls = data
-        .get("data")
-        .unwrap()
-        .get("batch")
-        .unwrap()
-        .get(0)
-        .unwrap()
-        .get("calls")
-        .unwrap()
-        .as_array()
-        .unwrap();
-    let requested_call = calls.iter()
-        .find(|call| {
-            let id = call.get("id").unwrap().as_str().unwrap();
-            id == "0000650677-000003-0f08a-000001".to_string()
-        });
-    let parent_call = calls.iter()
-        .find(|call| {
-            let id = call.get("id").unwrap().as_str().unwrap();
-            id == "0000650677-000003-0f08a".to_string()
-        });
+    let gateway_response = response.json::<GatewayResponse<BatchResponse>>().await.unwrap();
+    let batch = gateway_response.data.batch;
+    let requested_call = batch[0].calls.iter()
+        .find(|call| call.id == "0000650677-000003-0f08a-000001".to_string());
+    let parent_call = batch[0].calls.iter()
+        .find(|call| call.id == "0000650677-000003-0f08a".to_string());
     assert!(requested_call.is_some());
     assert!(parent_call.is_none());
 }

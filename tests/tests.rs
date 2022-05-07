@@ -1,21 +1,12 @@
-use std::env;
-use sqlx::postgres::PgPoolOptions;
-use archive_gateway::ArchiveGateway;
 use serde_json::{json, Value};
+use common::launch_gateway;
+
+mod common;
 
 #[actix_web::test]
 async fn test_parent_call_loaded() {
-    let database_url = env::var("TEST_DATABASE_URL").unwrap();
-    let pool = PgPoolOptions::new()
-        .connect(&database_url)
-        .await
-        .unwrap();
-    let gateway = ArchiveGateway::new(pool, false);
-    let handle = actix_web::rt::spawn(async move {
-        gateway.run().await
-    });
+    launch_gateway();
     let client = reqwest::Client::new();
-    actix_web::rt::time::sleep(std::time::Duration::from_secs(1)).await;
     let response = client.post("http://0.0.0.0:8000/graphql")
         .json(&json!({"query": "{ batch(limit: 1, calls: [{name: \"Balances.transfer\", data: {call: {parent: {_all: true}}}}]) { calls } }"}))
         .send()
@@ -36,7 +27,6 @@ async fn test_parent_call_loaded() {
         .unwrap()
         .as_array()
         .unwrap();
-    handle.abort();
     let requested_call = calls.iter()
         .find(|call| {
             let id = call.get("id").unwrap().as_str().unwrap();
@@ -53,17 +43,8 @@ async fn test_parent_call_loaded() {
 
 #[actix_web::test]
 async fn test_parent_call_skipped() {
-    let database_url = env::var("TEST_DATABASE_URL").unwrap();
-    let pool = PgPoolOptions::new()
-        .connect(&database_url)
-        .await
-        .unwrap();
-    let gateway = ArchiveGateway::new(pool, false);
-    let handle = actix_web::rt::spawn(async move {
-        gateway.run().await
-    });
+    launch_gateway();
     let client = reqwest::Client::new();
-    actix_web::rt::time::sleep(std::time::Duration::from_secs(1)).await;
     let response = client.post("http://0.0.0.0:8000/graphql")
         .json(&json!({"query": "{ batch(limit: 1, calls: [{name: \"Balances.transfer\", data: {call: {parent: {_all: false}}}}]) { calls } }"}))
         .send()
@@ -84,7 +65,6 @@ async fn test_parent_call_skipped() {
         .unwrap()
         .as_array()
         .unwrap();
-    handle.abort();
     let requested_call = calls.iter()
         .find(|call| {
             let id = call.get("id").unwrap().as_str().unwrap();

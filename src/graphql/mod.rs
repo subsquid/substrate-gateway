@@ -1,11 +1,9 @@
 use crate::archive::ArchiveService;
-use crate::archive::cockroach::CockroachArchive;
 use crate::archive::selection::{EventSelection, CallSelection, EvmLogSelection};
 use crate::entities::{Batch, Metadata, Status};
 use crate::metrics::DB_TIME_SPENT_SECONDS;
 use serde_json::{Map, Value};
 use convert_case::{Casing, Case};
-use sqlx::{Pool, Postgres};
 use async_graphql::{Context, Object, Result};
 use inputs::{EventSelectionInput, CallSelectionInput, EvmLogSelectionInput};
 
@@ -41,13 +39,16 @@ fn batch_to_camel_case(batch: &mut Vec<Batch>) {
     }
 }
 
-pub struct QueryRoot;
+pub struct QueryRoot<T: ArchiveService> {
+    pub archive: T,
+}
 
 #[Object]
-impl QueryRoot {
+impl<T> QueryRoot<T>
+    where T: ArchiveService + Send + Sync
+{
     async fn batch(
         &self,
-        ctx: &Context<'_>,
         limit: i32,
         #[graphql(default = 0)]
         from_block: i32,
@@ -60,8 +61,6 @@ impl QueryRoot {
         call_selections: Option<Vec<CallSelectionInput>>,
         include_all_blocks: Option<bool>,
     ) -> Result<Vec<Batch>> {
-        let pool = ctx.data::<Pool<Postgres>>()?;
-        let archive = CockroachArchive::new(pool.clone());
         let mut events = Vec::new();
         if let Some(selections) = event_selections {
             for selection in selections {
@@ -81,34 +80,28 @@ impl QueryRoot {
             }
         }
         let include_all_blocks = include_all_blocks.unwrap_or(false);
-        let mut batch = archive
+        let mut batch = self.archive
             .batch(limit, from_block, to_block, &evm_logs, &events, &calls, include_all_blocks)
             .await?;
         batch_to_camel_case(&mut batch);
         Ok(batch)
     }
 
-    async fn metadata(&self, ctx: &Context<'_>) -> Result<Vec<Metadata>> {
-        let pool = ctx.data::<sqlx::Pool<sqlx::Postgres>>()?;
-        let archive = CockroachArchive::new(pool.clone());
+    async fn metadata(&self) -> Result<Vec<Metadata>> {
         let timer = DB_TIME_SPENT_SECONDS.with_label_values(&["metadata"]).start_timer();
-        let metadata = archive.metadata().await?;
+        let metadata = self.archive.metadata().await?;
         timer.observe_duration();
         Ok(metadata)
     }
 
-    async fn metadata_by_id(&self, ctx: &Context<'_>, id: String) -> Result<Option<Metadata>> {
-        let pool = ctx.data::<sqlx::Pool<sqlx::Postgres>>()?;
-        let archive = CockroachArchive::new(pool.clone());
-        let metadata = archive.metadata_by_id(id).await?;
+    async fn metadata_by_id(&self, id: String) -> Result<Option<Metadata>> {
+        let metadata = self.archive.metadata_by_id(id).await?;
         Ok(metadata)
     }
 
-    async fn status(&self, ctx: &Context<'_>) -> Result<Status> {
-        let pool = ctx.data::<sqlx::Pool<sqlx::Postgres>>()?;
-        let archive = CockroachArchive::new(pool.clone());
+    async fn status(&self) -> Result<Status> {
         let timer = DB_TIME_SPENT_SECONDS.with_label_values(&["block"]).start_timer();
-        let status = archive.status().await?;
+        let status = self.archive.status().await?;
         timer.observe_duration();
         Ok(status)
     }

@@ -1,3 +1,4 @@
+use crate::archive::ArchiveService;
 use crate::graphql::QueryRoot;
 use crate::metrics::{HTTP_REQUESTS_TOTAL, HTTP_RESPONSE_TIME_SECONDS, SERIALIZATION_TIME_SPENT_SECONDS, HTTP_REQUESTS_ERRORS};
 use std::time::Duration;
@@ -74,11 +75,13 @@ async fn graphql_playground() -> Result<HttpResponse> {
 }
 
 
-async fn graphql_request(
-    schema: Data<Schema<QueryRoot, EmptyMutation, EmptySubscription>>,
+async fn graphql_request<T>(
+    schema: Data<Schema<QueryRoot<T>, EmptyMutation, EmptySubscription>>,
     req: HttpRequest,
     gql_req: GraphQLRequest
-) -> GraphQLResponse {
+) -> GraphQLResponse
+    where T: ArchiveService + Send + Sync + 'static
+{
     let extensions = req.extensions();
     let db_timer = extensions.get::<Arc<Mutex<DbTimer>>>().expect("DbTimer wasn't initialized");
     let request = gql_req.into_inner().data(db_timer.clone());
@@ -102,13 +105,19 @@ async fn metrics() -> Result<HttpResponse, actix_web::Error> {
 }
 
 
-pub async fn run(schema: Schema<QueryRoot, EmptyMutation, EmptySubscription>) -> std::io::Result<()> {
+pub async fn run<T>(
+    schema: Schema<QueryRoot<T>,
+    EmptyMutation,
+    EmptySubscription>
+) -> std::io::Result<()>
+    where T: ArchiveService + Send + Sync + 'static
+{
     HttpServer::new(move || {
         App::new()
             .app_data(Data::new(schema.clone()))
             .wrap(Logger::default())
             .service(resource("/").guard(Get()).to(graphql_playground))
-            .service(resource("/graphql").guard(Post()).to(graphql_request).wrap_fn(|req, srv| {
+            .service(resource("/graphql").guard(Post()).to(graphql_request::<T>).wrap_fn(|req, srv| {
                 HTTP_REQUESTS_TOTAL.with_label_values(&[]).inc();
                 let request_timer = HTTP_RESPONSE_TIME_SECONDS.with_label_values(&[]).start_timer();
                 let db_timer = Arc::new(Mutex::new(DbTimer::new()));

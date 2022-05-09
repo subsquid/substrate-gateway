@@ -1,6 +1,6 @@
 use std::env;
 use sqlx::postgres::PgPoolOptions;
-use archive_gateway::ArchiveGateway;
+use archive_gateway::{ArchiveGateway, DatabaseType};
 
 
 #[actix_web::main]
@@ -9,6 +9,13 @@ async fn main() -> std::io::Result<()> {
 
     let database_url = env::var("DATABASE_URL")
         .expect("DATABASE_URL env variable is required");
+    let database_type = match env::var("DATABASE_TYPE")
+        .expect("DATABASE_TYPE env variable is required")
+        .as_str() {
+            "postgres" => DatabaseType::Postgres,
+            "cockroach" => DatabaseType::Cockroach,
+            _ => panic!("DATABASE_TYPE env should be `postgres` or `cockroach`")
+        };
     let max_connections = env::var("DATABASE_MAX_CONNECTIONS")
         .expect("DATABASE_MAX_CONNECTIONS env variable is required")
         .parse::<u32>()
@@ -22,7 +29,7 @@ async fn main() -> std::io::Result<()> {
         .connect(&database_url)
         .await
         .unwrap();
-    ArchiveGateway::new(pool, evm_support)
+    ArchiveGateway::new(pool, database_type, evm_support)
         .run()
         .await
 }

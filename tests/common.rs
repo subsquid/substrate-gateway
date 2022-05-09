@@ -4,7 +4,7 @@ use std::time::Duration;
 use sqlx::postgres::PgPoolOptions;
 use actix_web::rt::{Runtime, spawn};
 use actix_web::rt::time::sleep;
-use archive_gateway::ArchiveGateway;
+use archive_gateway::{ArchiveGateway, DatabaseType};
 use serde::Deserialize;
 use serde_json::Value;
 
@@ -21,8 +21,15 @@ pub fn launch_gateway() {
                         .connect(&database_url)
                         .await
                         .unwrap();
+                    let database_type = match env::var("DATABASE_TYPE")
+                        .expect("DATABASE_TYPE env variable is required")
+                        .as_str() {
+                            "postgres" => DatabaseType::Postgres,
+                            "cockroach" => DatabaseType::Cockroach,
+                            _ => panic!("DATABASE_TYPE env should be `postgres` or `cockroach`")
+                        };
                     spawn(async {
-                        ArchiveGateway::new(pool, false).run().await
+                        ArchiveGateway::new(pool, database_type, false).run().await
                     });
                     sleep(Duration::from_secs(1)).await;
                 });

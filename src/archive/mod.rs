@@ -4,6 +4,7 @@ use selection::{EventSelection, CallSelection, EvmLogSelection};
 
 pub mod selection;
 pub mod cockroach;
+pub mod postgres;
 
 #[async_trait::async_trait]
 pub trait ArchiveService {

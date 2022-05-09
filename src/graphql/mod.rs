@@ -39,14 +39,12 @@ fn batch_to_camel_case(batch: &mut Vec<Batch>) {
     }
 }
 
-pub struct QueryRoot<T: ArchiveService> {
-    pub archive: T,
+pub struct QueryRoot {
+    pub archive: Box<dyn ArchiveService + Send + Sync>,
 }
 
 #[Object]
-impl<T> QueryRoot<T>
-    where T: ArchiveService + Send + Sync
-{
+impl QueryRoot {
     async fn batch(
         &self,
         limit: i32,

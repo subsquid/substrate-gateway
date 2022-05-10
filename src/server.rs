@@ -12,7 +12,7 @@ use actix_web::middleware::Logger;
 use actix_web::http::header::ContentType;
 use actix_web::dev::Service;
 use prometheus::{TextEncoder, Encoder};
-
+use tracing::{instrument, Span};
 
 
 /// Timer to measure the time spent to waiting result from database
@@ -74,11 +74,17 @@ async fn graphql_playground() -> Result<HttpResponse> {
 }
 
 
+#[instrument(skip_all, fields(x_squid_processor))]
 async fn graphql_request(
     schema: Data<Schema<QueryRoot, EmptyMutation, EmptySubscription>>,
     req: HttpRequest,
     gql_req: GraphQLRequest
 ) -> GraphQLResponse {
+    let x_squid_processor = req.headers()
+        .get("X-SQUID-PROCESSOR")
+        .and_then(|value| value.to_str().ok());
+    Span::current().record("x_squid_processor", &x_squid_processor);
+
     let extensions = req.extensions();
     let db_timer = extensions.get::<Arc<Mutex<DbTimer>>>().expect("DbTimer wasn't initialized");
     let request = gql_req.into_inner().data(db_timer.clone());

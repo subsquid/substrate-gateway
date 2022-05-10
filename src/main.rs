@@ -1,11 +1,17 @@
 use std::env;
 use sqlx::postgres::PgPoolOptions;
 use archive_gateway::{ArchiveGateway, DatabaseType};
+use tracing_subscriber::EnvFilter;
 
-
+#[tracing::instrument]
 #[actix_web::main]
 async fn main() -> std::io::Result<()> {
-    env_logger::init();
+    tracing_subscriber::fmt()
+        .with_env_filter(EnvFilter::from_default_env())
+        .with_target(false)
+        .json()
+        .flatten_event(true)
+        .init();
 
     let database_url = env::var("DATABASE_URL")
         .expect("DATABASE_URL env variable is required");

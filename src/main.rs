@@ -1,4 +1,5 @@
 use std::env;
+use std::time::Duration;
 use sqlx::postgres::PgPoolOptions;
 use archive_gateway::{ArchiveGateway, DatabaseType};
 use tracing_subscriber::EnvFilter;
@@ -32,8 +33,8 @@ async fn main() -> std::io::Result<()> {
         .unwrap();
     let pool = PgPoolOptions::new()
         .max_connections(max_connections)
-        .connect(&database_url)
-        .await
+        .connect_timeout(Duration::from_secs(5))
+        .connect_lazy(&database_url)
         .unwrap();
     ArchiveGateway::new(pool, database_type, evm_support)
         .run()

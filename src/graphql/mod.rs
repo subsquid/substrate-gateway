@@ -51,7 +51,7 @@ impl QueryRoot {
         #[graphql(default = 0)]
         from_block: i32,
         to_block: Option<i32>,
-        #[graphql(name = "emvLogs", visible = "is_evm_supported")]
+        #[graphql(name = "evmLogs", visible = "is_evm_supported")]
         evm_log_selections: Option<Vec<EvmLogSelectionInput>>,
         #[graphql(name = "events")]
         event_selections: Option<Vec<EventSelectionInput>>,

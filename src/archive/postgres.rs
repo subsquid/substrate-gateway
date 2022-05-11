@@ -61,7 +61,7 @@ impl ArchiveService for PostgresArchive {
         let extrinsics = self.get_extrinsics(&event_selections, &call_selections, &evm_log_selections,
                                              &events, &calls, &evm_logs).await?;
         let events_calls = self.get_events_calls(&event_selections, &events).await?;
-        let evm_logs_calls = self.get_emv_logs_calls(&evm_log_selections, &evm_logs).await?;
+        let evm_logs_calls = self.get_evm_logs_calls(&evm_log_selections, &evm_logs).await?;
         let batch = self.create_batch(blocks, events, calls, extrinsics, events_calls,
                                       evm_logs, evm_logs_calls);
         Ok(batch)
@@ -556,7 +556,7 @@ impl PostgresArchive {
         Ok(calls)
     }
 
-    async fn get_emv_logs_calls(
+    async fn get_evm_logs_calls(
         &self,
         evm_log_selections: &Vec<EvmLogSelection>,
         evm_logs: &Vec<EvmLog>

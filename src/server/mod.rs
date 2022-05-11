@@ -8,12 +8,13 @@ use async_graphql_actix_web::{GraphQLRequest, GraphQLResponse};
 use actix_web::{Result, HttpRequest, HttpResponse, App, HttpServer, HttpMessage};
 use actix_web::guard::{Get, Post};
 use actix_web::web::{Data, resource};
-use actix_web::middleware::Logger;
 use actix_web::http::header::ContentType;
 use actix_web::dev::Service;
 use prometheus::{TextEncoder, Encoder};
 use tracing::{instrument, Span};
+use middleware::Logger;
 
+mod middleware;
 
 /// Timer to measure the time spent to waiting result from database
 #[derive(Debug)]
@@ -112,7 +113,7 @@ pub async fn run(schema: Schema<QueryRoot, EmptyMutation, EmptySubscription>) ->
     HttpServer::new(move || {
         App::new()
             .app_data(Data::new(schema.clone()))
-            .wrap(Logger::default())
+            .wrap(Logger {})
             .service(resource("/").guard(Get()).to(graphql_playground))
             .service(resource("/graphql").guard(Post()).to(graphql_request).wrap_fn(|req, srv| {
                 HTTP_REQUESTS_TOTAL.with_label_values(&[]).inc();

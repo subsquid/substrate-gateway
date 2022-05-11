@@ -11,7 +11,7 @@ use actix_web::web::{Data, resource};
 use actix_web::http::header::ContentType;
 use actix_web::dev::Service;
 use prometheus::{TextEncoder, Encoder};
-use tracing::{instrument, Span};
+use tracing::error;
 use middleware::Logger;
 
 mod middleware;
@@ -75,22 +75,19 @@ async fn graphql_playground() -> Result<HttpResponse> {
 }
 
 
-#[instrument(skip_all, fields(x_squid_processor))]
 async fn graphql_request(
     schema: Data<Schema<QueryRoot, EmptyMutation, EmptySubscription>>,
     req: HttpRequest,
     gql_req: GraphQLRequest
 ) -> GraphQLResponse {
-    let x_squid_processor = req.headers()
-        .get("X-SQUID-PROCESSOR")
-        .and_then(|value| value.to_str().ok());
-    Span::current().record("x_squid_processor", &x_squid_processor);
-
     let extensions = req.extensions();
     let db_timer = extensions.get::<Arc<Mutex<DbTimer>>>().expect("DbTimer wasn't initialized");
     let request = gql_req.into_inner().data(db_timer.clone());
     let response = schema.execute(request).await;
     if response.is_err() {
+        for error in &response.errors {
+            error!(message = error.message.as_str());
+        }
         HTTP_REQUESTS_ERRORS.with_label_values(&[]).inc();
     }
     response.into()

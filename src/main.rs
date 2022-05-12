@@ -13,6 +13,7 @@ async fn main() -> std::io::Result<()> {
         .json()
         .flatten_event(true)
         .with_span_list(false)
+        .with_current_span(false)
         .init();
 
     let database_url = env::var("DATABASE_URL")

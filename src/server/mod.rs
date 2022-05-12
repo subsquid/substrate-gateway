@@ -85,8 +85,11 @@ async fn graphql_request(
     let request = gql_req.into_inner().data(db_timer.clone());
     let response = schema.execute(request).await;
     if response.is_err() {
+        let x_squid_processor = req.headers()
+            .get("X-SQUID-PROCESSOR")
+            .and_then(|value| value.to_str().ok());
         for error in &response.errors {
-            error!(message = error.message.as_str());
+            error!(x_squid_processor, message = error.message.as_str());
         }
         HTTP_REQUESTS_ERRORS.with_label_values(&[]).inc();
     }

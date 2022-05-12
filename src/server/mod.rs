@@ -12,7 +12,7 @@ use actix_web::http::header::ContentType;
 use actix_web::dev::Service;
 use prometheus::{TextEncoder, Encoder};
 use tracing::error;
-use middleware::Logger;
+use middleware::{Logger, BindRequestId, RequestId};
 
 mod middleware;
 
@@ -82,6 +82,7 @@ async fn graphql_request(
 ) -> GraphQLResponse {
     let extensions = req.extensions();
     let db_timer = extensions.get::<Arc<Mutex<DbTimer>>>().expect("DbTimer wasn't initialized");
+    let request_id = extensions.get::<RequestId>().expect("RequestId wasn't set").0.as_str();
     let request = gql_req.into_inner().data(db_timer.clone());
     let response = schema.execute(request).await;
     if response.is_err() {
@@ -89,7 +90,7 @@ async fn graphql_request(
             .get("X-SQUID-PROCESSOR")
             .and_then(|value| value.to_str().ok());
         for error in &response.errors {
-            error!(x_squid_processor, message = error.message.as_str());
+            error!(x_squid_processor, request_id, message = error.message.as_str());
         }
         HTTP_REQUESTS_ERRORS.with_label_values(&[]).inc();
     }
@@ -114,6 +115,7 @@ pub async fn run(schema: Schema<QueryRoot, EmptyMutation, EmptySubscription>) ->
         App::new()
             .app_data(Data::new(schema.clone()))
             .wrap(Logger {})
+            .wrap(BindRequestId {})
             .service(resource("/").guard(Get()).to(graphql_playground))
             .service(resource("/graphql").guard(Post()).to(graphql_request).wrap_fn(|req, srv| {
                 HTTP_REQUESTS_TOTAL.with_label_values(&[]).inc();

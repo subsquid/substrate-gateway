@@ -50,9 +50,25 @@ pub struct Call {
     pub pos: i32,
 }
 
+#[allow(non_snake_case)]
+#[derive(Deserialize)]
+pub struct Event {
+    pub id: String,
+    pub block_id: Option<String>,
+    pub index_in_block: Option<i32>,
+    pub phase: Option<String>,
+    pub extrinsic_id: Option<String>,
+    pub call_id: Option<String>,
+    pub name: Option<String>,
+    pub args: Option<Value>,
+    pub pos: i32,
+    pub txHash: Option<String>,
+}
+
 #[derive(Deserialize)]
 pub struct Batch {
-    pub calls: Vec<Call>,
+    pub calls: Option<Vec<Call>>,
+    pub events: Option<Vec<Event>>
 }
 
 #[derive(Deserialize)]

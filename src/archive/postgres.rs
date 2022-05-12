@@ -309,20 +309,16 @@ impl PostgresArchive {
                     .collect();
                 if selection.data.tx_hash {
                     // transaction_hash has second index
-                    let tx_hash_subquery = "(
-                        SELECT jsonb_extract_path_text(sub_event.args, '2')
-                        FROM event AS sub_event
-                        WHERE sub_event.extrinsic_id = event.extrinsic_id AND sub_event.name = 'Ethereum.Executed'
-                    )";
-                    build_object_args.push(format!("'txHash', {}", tx_hash_subquery));
+                    let tx_hash = "'txHash', jsonb_extract_path_text(executed_event.args, '2')".to_string();
+                    build_object_args.push(tx_hash);
                 }
                 let build_object_fields = build_object_args.join(", ");
                 let to_block = to_block.map_or("null".to_string(), |to_block| to_block.to_string());
                 let mut filters = vec![
-                    "name = 'EVM.Log'".to_string(),
+                    "event.name = 'EVM.Log'".to_string(),
                     format!("block.height >= {}", from_block),
                     format!("({} IS null OR block.height <= {})", to_block, to_block),
-                    format!("args -> 'address' = '\"{}\"'", &selection.contract),
+                    format!("event.args -> 'address' = '\"{}\"'", &selection.contract),
                 ];
                 let topics_filters: Vec<String> = selection.filter.iter()
                     .enumerate()
@@ -332,7 +328,7 @@ impl PostgresArchive {
                         }
                         let topic_filter = topics.iter()
                             .map(|topic| {
-                                format!("jsonb_extract_path_text(args, 'topics', '{}') = '{}'", index, topic)
+                                format!("jsonb_extract_path_text(event.args, 'topics', '{}') = '{}'", index, topic)
                             })
                             .collect::<Vec<String>>()
                             .join(" OR ");
@@ -346,7 +342,7 @@ impl PostgresArchive {
                 let conditions = filters.join(" AND ");
                 format!("(
                     SELECT
-                        block_id,
+                        event.block_id,
                         json_agg(
                             jsonb_build_object(
                                 'selection_index', {},
@@ -355,9 +351,12 @@ impl PostgresArchive {
                         ) AS logs
                     FROM event
                     INNER JOIN block
-                    ON event.block_id = block.id
+                        ON event.block_id = block.id
+                    INNER JOIN event executed_event
+                        ON event.extrinsic_id = executed_event.extrinsic_id
+                            AND executed_event.name = 'Ethereum.Executed'
                     WHERE {}
-                    GROUP BY block_id
+                    GROUP BY event.block_id
                     LIMIT {}
                 )", index, &build_object_fields, &conditions, limit)
             })
@@ -375,8 +374,8 @@ impl PostgresArchive {
                     SELECT
                         block_id,
                         json_array_elements(logs) as log
-                    FROM ({})
-                )
+                    FROM ({}) AS logs
+                ) AS logs
                 GROUP BY block_id
                 LIMIT {}
             ) AS logs_by_block", &subqueries, limit);

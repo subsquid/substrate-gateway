@@ -2,6 +2,7 @@ use super::ArchiveService;
 use super::selection::{CallSelection, EventSelection, EvmLogSelection};
 use crate::entities::{Batch, Metadata, Status, Call, Event, Extrinsic, BlockHeader, EvmLog};
 use crate::error::Error;
+use crate::metrics::ObserverExt;
 use serde_json::{Value, Map};
 use std::collections::HashMap;
 use sqlx::{Pool, Postgres};
@@ -71,6 +72,7 @@ impl ArchiveService for PostgresArchive {
         let query = "SELECT id, spec_name, spec_version, block_height, block_hash, hex FROM metadata";
         let metadata = sqlx::query_as::<_, Metadata>(query)
             .fetch_all(&self.pool)
+            .observe_duration("metadata")
             .await?;
         Ok(metadata)
     }
@@ -81,6 +83,7 @@ impl ArchiveService for PostgresArchive {
         let metadata = sqlx::query_as::<_, Metadata>(query)
             .bind(id)
             .fetch_optional(&self.pool)
+            .observe_duration("metadata")
             .await?;
         Ok(metadata)
     }
@@ -89,6 +92,7 @@ impl ArchiveService for PostgresArchive {
         let query = "SELECT height as head FROM block ORDER BY height DESC LIMIT 1";
         let status = sqlx::query_as::<_, Status>(query)
             .fetch_one(&self.pool)
+            .observe_duration("block")
             .await?;
         Ok(status)
     }
@@ -221,6 +225,7 @@ impl PostgresArchive {
             ) AS calls", &query_dynamic_part, limit);
         let calls = sqlx::query_as::<_, Call>(&query)
             .fetch_all(&self.pool)
+            .observe_duration("call")
             .await?;
         Ok(calls)
     }
@@ -283,6 +288,7 @@ impl PostgresArchive {
             ) AS events_by_block", &query_dynamic_part, limit);
         let events = sqlx::query_as::<_, Event>(&query)
             .fetch_all(&self.pool)
+            .observe_duration("event")
             .await?;
         Ok(events)
     }
@@ -381,6 +387,7 @@ impl PostgresArchive {
             ) AS logs_by_block", &subqueries, limit);
         let logs = sqlx::query_as::<_, EvmLog>(&query)
             .fetch_all(&self.pool)
+            .observe_duration("event")
             .await?;
         Ok(logs)
     }
@@ -422,6 +429,7 @@ impl PostgresArchive {
         let blocks = sqlx::query_as::<_, BlockHeader>(&query)
             .bind(ids)
             .fetch_all(&self.pool)
+            .observe_duration("block")
             .await?;
         Ok(blocks)
     }
@@ -447,6 +455,7 @@ impl PostgresArchive {
             .bind(to_block)
             .bind(limit)
             .fetch_all(&self.pool)
+            .observe_duration("block")
             .await?;
         Ok(blocks)
     }
@@ -512,6 +521,7 @@ impl PostgresArchive {
             .join(" UNION ");
         let extrinsics = sqlx::query_as::<_, Extrinsic>(&query)
             .fetch_all(&self.pool)
+            .observe_duration("extrinsic")
             .await?;
         Ok(extrinsics)
     }
@@ -551,6 +561,7 @@ impl PostgresArchive {
             .join(" UNION ");
         let calls = sqlx::query_as::<_, Call>(&query)
             .fetch_all(&self.pool)
+            .observe_duration("call")
             .await?;
         Ok(calls)
     }
@@ -586,6 +597,7 @@ impl PostgresArchive {
             .join(" UNION ");
         let calls = sqlx::query_as::<_, Call>(&query)
             .fetch_all(&self.pool)
+            .observe_duration("call")
             .await?;
         Ok(calls)
     }
@@ -651,5 +663,5 @@ impl PostgresArchive {
                 }
             })
             .collect()
-    }    
+    }
 }

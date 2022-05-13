@@ -2,6 +2,7 @@ use super::ArchiveService;
 use super::selection::{CallSelection, EventSelection, EvmLogSelection};
 use crate::entities::{Batch, Metadata, Status, Call, Event, Extrinsic, BlockHeader, EvmLog};
 use crate::error::Error;
+use crate::metrics::ObserverExt;
 use serde_json::{Value, Map};
 use std::collections::HashMap;
 use sqlx::{Pool, Postgres};
@@ -71,6 +72,7 @@ impl ArchiveService for CockroachArchive {
         let query = "SELECT id, spec_name, spec_version, block_height, block_hash, hex FROM metadata";
         let metadata = sqlx::query_as::<_, Metadata>(query)
             .fetch_all(&self.pool)
+            .observe_duration("metadata")
             .await?;
         Ok(metadata)
     }
@@ -81,6 +83,7 @@ impl ArchiveService for CockroachArchive {
         let metadata = sqlx::query_as::<_, Metadata>(query)
             .bind(id)
             .fetch_optional(&self.pool)
+            .observe_duration("metadata")
             .await?;
         Ok(metadata)
     }
@@ -89,6 +92,7 @@ impl ArchiveService for CockroachArchive {
         let query = "SELECT height as head FROM block ORDER BY height DESC LIMIT 1";
         let status = sqlx::query_as::<_, Status>(query)
             .fetch_one(&self.pool)
+            .observe_duration("block")
             .await?;
         Ok(status)
     }
@@ -222,6 +226,7 @@ impl CockroachArchive {
             )", &query_dynamic_part, limit);
         let calls = sqlx::query_as::<_, Call>(&query)
             .fetch_all(&self.pool)
+            .observe_duration("call")
             .await?;
         Ok(calls)
     }
@@ -285,6 +290,7 @@ impl CockroachArchive {
             )", &query_dynamic_part, limit);
         let events = sqlx::query_as::<_, Event>(&query)
             .fetch_all(&self.pool)
+            .observe_duration("event")
             .await?;
         Ok(events)
     }
@@ -384,6 +390,7 @@ impl CockroachArchive {
             )", &subqueries, limit);
         let logs = sqlx::query_as::<_, EvmLog>(&query)
             .fetch_all(&self.pool)
+            .observe_duration("event")
             .await?;
         Ok(logs)
     }
@@ -425,6 +432,7 @@ impl CockroachArchive {
         let blocks = sqlx::query_as::<_, BlockHeader>(&query)
             .bind(ids)
             .fetch_all(&self.pool)
+            .observe_duration("block")
             .await?;
         Ok(blocks)
     }
@@ -450,6 +458,7 @@ impl CockroachArchive {
             .bind(to_block)
             .bind(limit)
             .fetch_all(&self.pool)
+            .observe_duration("block")
             .await?;
         Ok(blocks)
     }
@@ -516,6 +525,7 @@ impl CockroachArchive {
             .join(" UNION ");
         let extrinsics = sqlx::query_as::<_, Extrinsic>(&query)
             .fetch_all(&self.pool)
+            .observe_duration("extrinsic")
             .await?;
         Ok(extrinsics)
     }
@@ -556,6 +566,7 @@ impl CockroachArchive {
             .join(" UNION ");
         let calls = sqlx::query_as::<_, Call>(&query)
             .fetch_all(&self.pool)
+            .observe_duration("call")
             .await?;
         Ok(calls)
     }
@@ -591,6 +602,7 @@ impl CockroachArchive {
             .join(" UNION ");
         let calls = sqlx::query_as::<_, Call>(&query)
             .fetch_all(&self.pool)
+            .observe_duration("call")
             .await?;
         Ok(calls)
     }

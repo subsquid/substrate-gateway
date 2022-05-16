@@ -29,7 +29,7 @@ pub fn launch_gateway() {
                             _ => panic!("TEST_DATABASE_TYPE env should be `postgres` or `cockroach`")
                         };
                     spawn(async {
-                        ArchiveGateway::new(pool, database_type, false).run().await
+                        ArchiveGateway::new(pool, database_type, false, true).run().await
                     });
                     sleep(Duration::from_secs(1)).await;
                 });
@@ -67,8 +67,8 @@ pub struct Event {
 
 #[derive(Deserialize)]
 pub struct Batch {
-    pub calls: Option<Vec<Call>>,
-    pub events: Option<Vec<Event>>
+    pub calls: Vec<Call>,
+    pub events: Vec<Event>,
 }
 
 #[derive(Deserialize)]
@@ -79,4 +79,51 @@ pub struct BatchResponse {
 #[derive(Deserialize)]
 pub struct GatewayResponse<T> {
     pub data: T,
+}
+
+fn args_to_string(args: &Value, root: bool) -> String {
+    if args.is_array() {
+        let list = args.as_array().unwrap()
+            .iter()
+            .map(|value| args_to_string(value, false))
+            .collect::<Vec<String>>()
+            .join(", ");
+        format!("[{}]", list)
+    } else if args.is_object() {
+        let object = args.as_object().unwrap()
+            .iter()
+            .map(|(key, value)| format!("{}: {}", key, args_to_string(value, false)))
+            .collect::<Vec<String>>()
+            .join(", ");
+        if root {
+            object
+        } else {
+            format!("{{{}}}", object)
+        }
+    } else {
+        format!("{}", args)
+    }
+}
+
+pub struct Client(reqwest::Client);
+
+impl Client {
+    pub fn new() -> Self {
+        Client(reqwest::Client::new())
+    }
+
+    pub async fn batch(&self, args: Value) -> Batch {
+        let json = serde_json::json!({
+            "query": format!("{{ batch({}) {{ calls, events, extrinsics }} }}", args_to_string(&args, true)),
+        });
+        let response = self.0.post("http://0.0.0.0:8000/graphql")
+            .json(&json)
+            .send()
+            .await
+            .unwrap();
+        let mut parsed = response.json::<GatewayResponse<BatchResponse>>()
+            .await
+            .unwrap();
+        parsed.data.batch.remove(0)
+    }
 }

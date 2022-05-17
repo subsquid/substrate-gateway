@@ -1,11 +1,16 @@
 use crate::archive::ArchiveService;
-use crate::archive::selection::{EventSelection, CallSelection, EvmLogSelection};
+use crate::archive::selection::{
+    EventSelection, CallSelection, EvmLogSelection, ContractsEventSelection,
+};
 use crate::entities::{Batch, Metadata, Status};
 use crate::metrics::DB_TIME_SPENT_SECONDS;
 use serde_json::{Map, Value};
 use convert_case::{Casing, Case};
 use async_graphql::{Context, Object, Result};
-use inputs::{EventSelectionInput, CallSelectionInput, EvmLogSelectionInput};
+use inputs::{
+    EventSelectionInput, CallSelectionInput,
+    EvmLogSelectionInput, ContractsEventSelectionInput,
+};
 
 mod inputs;
 
@@ -13,6 +18,12 @@ pub struct EvmSupport(pub bool);
 
 fn is_evm_supported(ctx: &Context<'_>) -> bool {
     ctx.data_unchecked::<EvmSupport>().0
+}
+
+pub struct ContractsSupport(pub bool);
+
+fn is_contracts_supported(ctx: &Context<'_>) -> bool {
+    ctx.data_unchecked::<ContractsSupport>().0
 }
 
 fn keys_to_camel_case(map: &mut Map<String, Value>) {
@@ -53,6 +64,8 @@ impl QueryRoot {
         to_block: Option<i32>,
         #[graphql(name = "evmLogs", visible = "is_evm_supported")]
         evm_log_selections: Option<Vec<EvmLogSelectionInput>>,
+        #[graphql(name = "contractsEvents", visible = "is_contracts_supported")]
+        contracts_event_selections: Option<Vec<ContractsEventSelectionInput>>,
         #[graphql(name = "events")]
         event_selections: Option<Vec<EventSelectionInput>>,
         #[graphql(name = "calls")]
@@ -77,9 +90,16 @@ impl QueryRoot {
                 evm_logs.push(EvmLogSelection::from(selection));
             }
         }
+        let mut contracts_events = Vec::new();
+        if let Some(selections) = contracts_event_selections {
+            for selection in selections {
+                contracts_events.push(ContractsEventSelection::from(selection));
+            }
+        }
         let include_all_blocks = include_all_blocks.unwrap_or(false);
         let mut batch = self.archive
-            .batch(limit, from_block, to_block, &evm_logs, &events, &calls, include_all_blocks)
+            .batch(limit, from_block, to_block, &evm_logs, &contracts_events,
+                   &events, &calls, include_all_blocks)
             .await?;
         batch_to_camel_case(&mut batch);
         Ok(batch)

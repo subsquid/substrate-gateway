@@ -70,3 +70,22 @@ async fn test_evm_log_has_tx_hash() {
     assert!(log.id == "0000569006-000084-5e412".to_string());
     assert!(log.txHash.clone().unwrap() == "0x8eafe131eee90e0dfb07d6df46b1aea737834936968da31f807af566a59148b9".to_string());
 }
+
+#[actix_web::test]
+async fn test_contracts_events() {
+    launch_gateway();
+    let client = common::Client::new();
+    let batch = client.batch(json!({
+        "limit": 1 as i32,
+        "contractsEvents": [{
+            "contract": "0xf98402623dbe32d22b67e0a25136b763615c14fd4201b1aac8832ec52aa64d10",
+            "data": {
+                "event": {
+                    "_all": true
+                }
+            }
+        }]
+    })).await;
+    let event = &batch.events[0];
+    assert!(event.id == "0000000734-000004-251d1".to_string());
+}

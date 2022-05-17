@@ -33,12 +33,18 @@ async fn main() -> std::io::Result<()> {
         .expect("EVM_SUPPORT env variable is required")
         .parse::<bool>()
         .unwrap();
+    let contracts_support = match env::var("CONTRACTS_SUPPORT") {
+        Ok(variable) => {
+            variable.parse::<bool>().expect("CONTRACTS_SUPPORT parsing error")
+        }
+        Err(_) => false
+    };
     let pool = PgPoolOptions::new()
         .max_connections(max_connections)
         .connect_timeout(Duration::from_secs(5))
         .connect_lazy(&database_url)
         .unwrap();
-    ArchiveGateway::new(pool, database_type, evm_support)
+    ArchiveGateway::new(pool, database_type, evm_support, contracts_support)
         .run()
         .await
 }

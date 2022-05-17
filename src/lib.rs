@@ -3,7 +3,7 @@ use crate::archive::postgres::PostgresArchive;
 use crate::archive::ArchiveService;
 use std::boxed::Box;
 use async_graphql::{EmptyMutation, EmptySubscription, Schema};
-use graphql::{QueryRoot, EvmSupport};
+use graphql::{QueryRoot, EvmSupport, ContractsSupport};
 use sqlx::{Pool, Postgres};
 
 mod entities;
@@ -22,14 +22,21 @@ pub struct ArchiveGateway {
     pool: Pool<Postgres>,
     database_type: DatabaseType,
     evm_support: bool,
+    contracts_support: bool,
 }
 
 impl ArchiveGateway {
-    pub fn new(pool: Pool<Postgres>, database_type: DatabaseType, evm_support: bool) -> Self {
+    pub fn new(
+        pool: Pool<Postgres>,
+        database_type: DatabaseType,
+        evm_support: bool,
+        contracts_support: bool,
+    ) -> Self {
         ArchiveGateway {
             pool,
             database_type,
             evm_support,
+            contracts_support,
         }
     }
 
@@ -41,6 +48,7 @@ impl ArchiveGateway {
         let query = QueryRoot { archive };
         let schema = Schema::build(query, EmptyMutation, EmptySubscription)
             .data(EvmSupport(self.evm_support))
+            .data(ContractsSupport(self.contracts_support))
             .finish();
         server::run(schema).await
     }

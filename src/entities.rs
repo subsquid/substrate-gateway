@@ -46,6 +46,14 @@ pub struct EvmLog {
 }
 
 
+#[derive(sqlx::FromRow, Debug)]
+pub struct ContractsEvent {
+    pub block_id: String,
+    pub selection_index: i16,
+    pub data: serde_json::Value,
+}
+
+
 #[derive(SimpleObject, Debug)]
 pub struct Batch {
     pub header: BlockHeader,

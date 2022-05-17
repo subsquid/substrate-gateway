@@ -360,3 +360,9 @@ pub struct EvmLogSelection {
     pub filter: Vec<Vec<String>>,
     pub data: EvmLogDataSelection,
 }
+
+#[derive(Debug)]
+pub struct ContractsEventSelection {
+    pub contract: String,
+    pub data: EventDataSelection,
+}

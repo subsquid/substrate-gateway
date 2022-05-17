@@ -1,7 +1,7 @@
 use crate::archive::selection::{
     ParentCallFields, CallFields, ExtrinsicFields, EventFields,
     EventDataSelection, CallDataSelection, EventSelection, CallSelection,
-    EvmLogDataSelection, EvmLogSelection
+    EvmLogDataSelection, EvmLogSelection, ContractsEventSelection,
 };
 use async_graphql::InputObject;
 
@@ -257,6 +257,27 @@ impl EvmLogSelection {
             }, |data| {
                 EvmLogDataSelection::from(data)
             }),
+        }
+    }
+}
+
+
+#[derive(InputObject, Clone)]
+#[graphql(name = "ContractsEventSelection")]
+pub struct ContractsEventSelectionInput {
+    pub contract: String,
+    pub data: Option<EventDataSelectionInput>,
+}
+
+impl ContractsEventSelection {
+    pub fn from(selection: ContractsEventSelectionInput) -> Self {
+        ContractsEventSelection {
+            contract: selection.contract,
+            data: selection.data.map_or_else(|| {
+                EventDataSelection::new(true)
+            }, |data| {
+                EventDataSelection::from(data)
+            })
         }
     }
 }

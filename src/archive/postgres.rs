@@ -76,7 +76,7 @@ impl ArchiveService for PostgresArchive {
     }
 
     async fn metadata(&self) -> Result<Vec<Metadata>, Error> {
-        let query = "SELECT id, spec_name, spec_version, block_height, block_hash, hex FROM metadata";
+        let query = "SELECT id, spec_name, spec_version::int8, block_height::int8, block_hash, hex FROM metadata";
         let metadata = sqlx::query_as::<_, Metadata>(query)
             .fetch_all(&self.pool)
             .observe_duration("metadata")
@@ -85,7 +85,7 @@ impl ArchiveService for PostgresArchive {
     }
 
     async fn metadata_by_id(&self, id: String) -> Result<Option<Metadata>, Error> {
-        let query = "SELECT id, spec_name, spec_version, block_height, block_hash, hex
+        let query = "SELECT id, spec_name, spec_version::int8, block_height::int8, block_hash, hex
             FROM metadata WHERE id = $1";
         let metadata = sqlx::query_as::<_, Metadata>(query)
             .bind(id)

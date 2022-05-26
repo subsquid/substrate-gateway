@@ -4,6 +4,8 @@ pub struct ParentCallFields {
     pub name: bool,
     pub args: bool,
     pub success: bool,
+    pub error: bool,
+    pub origin: bool,
     pub parent: bool,
 }
 
@@ -15,6 +17,8 @@ impl ParentCallFields {
             name: value,
             args: value,
             success: value,
+            error: value,
+            origin: value,
             parent: value,
         }
     }
@@ -32,6 +36,12 @@ impl ParentCallFields {
         if self.success {
             return true;
         }
+        if self.error {
+            return true;
+        }
+        if self.origin {
+            return true;
+        }
         if self.parent {
             return true;
         }
@@ -44,6 +54,8 @@ impl ParentCallFields {
             fields.push("name".to_string());
             fields.push("args".to_string());
             fields.push("success".to_string());
+            fields.push("error".to_string());
+            fields.push("origin".to_string());
             fields.push("parent_id".to_string());
         } else {
             if self.name {
@@ -54,6 +66,12 @@ impl ParentCallFields {
             }
             if self.success {
                 fields.push("success".to_string());
+            }
+            if self.error {
+                fields.push("error".to_string());
+            }
+            if self.origin {
+                fields.push("origin".to_string());
             }
             if self.parent {
                 fields.push("parent_id".to_string());
@@ -68,6 +86,8 @@ impl ParentCallFields {
 pub struct CallFields {
     pub _all: bool,
     pub success: bool,
+    pub error: bool,
+    pub origin: bool,
     pub name: bool,
     pub args: bool,
     pub parent: ParentCallFields,
@@ -79,6 +99,8 @@ impl CallFields {
         CallFields {
             _all: value,
             success: value,
+            error: value,
+            origin: value,
             name: value,
             args: value,
             parent: ParentCallFields::new(value),
@@ -90,6 +112,12 @@ impl CallFields {
             return true;
         }
         if self.success {
+            return true;
+        }
+        if self.error {
+            return true;
+        }
+        if self.origin {
             return true;
         }
         if self.name {
@@ -108,12 +136,20 @@ impl CallFields {
         let mut fields = vec![];
         if self._all {
             fields.push("success".to_string());
+            fields.push("error".to_string());
+            fields.push("origin".to_string());
             fields.push("name".to_string());
             fields.push("args".to_string());
             fields.push("parent_id".to_string());
         } else {
             if self.success {
                 fields.push("success".to_string());
+            }
+            if self.error {
+                fields.push("error".to_string());
+            }
+            if self.origin {
+                fields.push("origin".to_string());
             }
             if self.name {
                 fields.push("name".to_string());
@@ -134,10 +170,14 @@ impl CallFields {
 pub struct ExtrinsicFields {
     pub _all: bool,
     pub index_in_block: bool,
+    pub version: bool,
     pub signature: bool,
     pub success: bool,
+    pub error: bool,
     pub hash: bool,
     pub call: CallFields,
+    pub fee: bool,
+    pub tip: bool,
 }
 
 
@@ -146,10 +186,14 @@ impl ExtrinsicFields {
         ExtrinsicFields {
             _all: value,
             index_in_block: value,
+            version: value,
             signature: value,
             success: value,
+            error: value,
             hash: value,
             call: CallFields::new(value),
+            fee: value,
+            tip: value,
         }
     }
 
@@ -160,16 +204,28 @@ impl ExtrinsicFields {
         if self.index_in_block {
             return true;
         }
+        if self.version {
+            return true;
+        }
         if self.signature {
             return true;
         }
         if self.success {
             return true;
         }
+        if self.error {
+            return true;
+        }
         if self.hash {
             return true;
         }
         if self.call.any() {
+            return true;
+        }
+        if self.fee {
+            return true;
+        }
+        if self.tip {
             return true;
         }
         false
@@ -179,13 +235,20 @@ impl ExtrinsicFields {
         let mut fields = vec![];
         if self._all {
             fields.push("index_in_block".to_string());
+            fields.push("version".to_string());
             fields.push("signature".to_string());
             fields.push("success".to_string());
+            fields.push("error".to_string());
             fields.push("hash".to_string());
             fields.push("call_id".to_string());
+            fields.push("fee".to_string());
+            fields.push("tip".to_string());
         } else {
             if self.index_in_block {
                 fields.push("index_in_block".to_string());
+            }
+            if self.version {
+                fields.push("version".to_string());
             }
             if self.signature {
                 fields.push("signature".to_string());
@@ -193,11 +256,20 @@ impl ExtrinsicFields {
             if self.success {
                 fields.push("success".to_string());
             }
+            if self.error {
+                fields.push("error".to_string());
+            }
             if self.hash {
                 fields.push("hash".to_string());
             }
             if self.call.any() {
                 fields.push("call_id".to_string());
+            }
+            if self.fee {
+                fields.push("fee".to_string());
+            }
+            if self.tip {
+                fields.push("tip".to_string());
             }
         }
         fields
@@ -356,26 +428,7 @@ impl CallDataSelection {
     }
 
     pub fn selected_fields(&self) -> Vec<String> {
-        let mut fields = vec![];
-        if self.call._all {
-            fields.push("success".to_string());
-            fields.push("name".to_string());
-            fields.push("args".to_string());
-            fields.push("parent_id".to_string());
-        } else {
-            if self.call.success {
-                fields.push("success".to_string());
-            }
-            if self.call.name {
-                fields.push("name".to_string());
-            }
-            if self.call.args {
-                fields.push("args".to_string());
-            }
-            if self.call.parent.any() {
-                fields.push("parent_id".to_string());
-            }
-        }
+        let mut fields = self.call.selected_fields();
         if self.extrinsic.any() {
             fields.push("extrinsic_id".to_string());
         }

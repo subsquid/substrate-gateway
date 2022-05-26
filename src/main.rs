@@ -10,10 +10,10 @@ async fn main() -> std::io::Result<()> {
     tracing_subscriber::fmt()
         .with_env_filter(EnvFilter::from_default_env())
         .with_target(false)
-        .json()
-        .flatten_event(true)
-        .with_span_list(false)
-        .with_current_span(false)
+        // .json()
+        // .flatten_event(true)
+        // .with_span_list(false)
+        // .with_current_span(false)
         .init();
 
     let database_url = env::var("DATABASE_URL")

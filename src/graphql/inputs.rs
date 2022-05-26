@@ -13,6 +13,8 @@ pub struct ParentCallFieldsInput {
     pub name: Option<bool>,
     pub args: Option<bool>,
     pub success: Option<bool>,
+    pub error: Option<bool>,
+    pub origin: Option<bool>,
     pub parent: Option<bool>,
 }
 
@@ -24,6 +26,8 @@ impl ParentCallFields {
             name: fields.name.unwrap_or(false),
             args: fields.args.unwrap_or(false),
             success: fields.success.unwrap_or(false),
+            error: fields.error.unwrap_or(false),
+            origin: fields.origin.unwrap_or(false),
             parent: fields.parent.unwrap_or(false),
         }
     }
@@ -36,6 +40,8 @@ pub struct CallFieldsInput {
     #[graphql(name="_all")]
     pub _all: Option<bool>,
     pub success: Option<bool>,
+    pub error: Option<bool>,
+    pub origin: Option<bool>,
     pub name: Option<bool>,
     pub args: Option<bool>,
     pub parent: Option<ParentCallFieldsInput>,
@@ -47,6 +53,8 @@ impl CallFields {
         CallFields {
             _all: fields._all.unwrap_or(false),
             success: fields.success.unwrap_or(false),
+            error: fields.error.unwrap_or(false),
+            origin: fields.origin.unwrap_or(false),
             name: fields.name.unwrap_or(false),
             args: fields.args.unwrap_or(false),
             parent: fields.parent.map_or_else(|| {
@@ -65,10 +73,14 @@ pub struct ExtrinsicFieldsInput {
     #[graphql(name="_all")]
     pub _all: Option<bool>,
     pub index_in_block: Option<bool>,
+    pub version: Option<bool>,
     pub signature: Option<bool>,
     pub success: Option<bool>,
+    pub error: Option<bool>,
     pub hash: Option<bool>,
     pub call: Option<CallFieldsInput>,
+    pub fee: Option<bool>,
+    pub tip: Option<bool>,
 }
 
 
@@ -77,14 +89,18 @@ impl ExtrinsicFields {
         ExtrinsicFields {
             _all: fields._all.unwrap_or(false),
             index_in_block: fields.index_in_block.unwrap_or(false),
+            version: fields.version.unwrap_or(false),
             signature: fields.signature.unwrap_or(false),
             success: fields.success.unwrap_or(false),
+            error: fields.error.unwrap_or(false),
             hash: fields.hash.unwrap_or(false),
             call: fields.call.map_or_else(|| {
                 CallFields::new(false)
             }, |call| {
                 CallFields::from(call)
             }),
+            fee: fields.fee.unwrap_or(false),
+            tip: fields.tip.unwrap_or(false),
         }
     }
 }

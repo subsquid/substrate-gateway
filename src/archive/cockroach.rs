@@ -797,7 +797,7 @@ impl CockroachArchive {
                 let deduplicated_events = unify_and_merge(events, event_fields);
                 let calls = calls_by_block.remove(&block.id).unwrap_or_default();
                 let call_fields = vec!["id", "parent_id", "block_id", "extrinsic_id", "success",
-                                       "name", "args", "pos"];
+                                       "error", "origin", "name", "args", "pos"];
                 let deduplicated_calls = unify_and_merge(calls, call_fields);
                 Batch {
                     extrinsics: extrinsics_by_block.remove(&block.id).unwrap_or_default(),

@@ -59,16 +59,15 @@ async fn test_evm_log_has_tx_hash() {
             "contract": "0xb654611f84a8dc429ba3cb4fda9fad236c505a1a",
             "filter": [["0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef"]],
             "data": {
-                "txHash": true,
-                "substrate": {
-                    "event": {"name": true}
+                "event": {
+                    "evmTxHash": true,
                 }
             }
         }]
     })).await;
     let log = &batch.events[0];
     assert!(log.id == "0000569006-000084-5e412".to_string());
-    assert!(log.txHash.clone().unwrap() == "0x8eafe131eee90e0dfb07d6df46b1aea737834936968da31f807af566a59148b9".to_string());
+    assert!(log.evmTxHash.clone().unwrap() == "0x8eafe131eee90e0dfb07d6df46b1aea737834936968da31f807af566a59148b9".to_string());
 }
 
 #[actix_web::test]

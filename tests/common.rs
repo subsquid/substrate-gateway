@@ -62,7 +62,7 @@ pub struct Event {
     pub name: Option<String>,
     pub args: Option<Value>,
     pub pos: i32,
-    pub txHash: Option<String>,
+    pub evmTxHash: Option<String>,
 }
 
 #[derive(Deserialize)]

@@ -377,16 +377,16 @@ impl PostgresArchive {
         let subqueries = evm_log_selections.iter()
             .enumerate()
             .map(|(index, selection)| {
-                let mut selected_fields = selection.data.substrate.event.selected_fields();
+                let mut selected_fields = selection.data.event.selected_fields();
                 selected_fields.push("id".to_string());
                 selected_fields.push("pos".to_string());
                 let mut build_object_args: Vec<String> = selected_fields
                     .iter()
                     .map(|field| format!("'{}', event.{}", &field, &field))
                     .collect();
-                if selection.data.tx_hash {
+                if selection.data.event.evm_tx_hash {
                     // transaction_hash has second index
-                    let tx_hash = "'txHash', jsonb_extract_path_text(executed_event.args, '2')".to_string();
+                    let tx_hash = "'evmTxHash', jsonb_extract_path_text(executed_event.args, '2')".to_string();
                     build_object_args.push(tx_hash);
                 }
                 let build_object_fields = build_object_args.join(", ");
@@ -576,7 +576,7 @@ impl PostgresArchive {
         }
         for log in evm_logs {
             let selection = &evm_log_selections[log.selection_index as usize];
-            let mut fields = selection.data.substrate.event.extrinsic.selected_fields();
+            let mut fields = selection.data.event.extrinsic.selected_fields();
             if !fields.is_empty() {
                 fields.push("id".to_string());
                 fields.push("pos".to_string());
@@ -701,7 +701,7 @@ impl PostgresArchive {
         let mut calls_info = HashMap::new();
         for log in evm_logs {
             let selection = &evm_log_selections[log.selection_index as usize];
-            let mut fields = selection.data.substrate.event.call.selected_fields();
+            let mut fields = selection.data.event.call.selected_fields();
             if !fields.is_empty() {
                 fields.push("id".to_string());
                 fields.push("pos".to_string());
@@ -787,7 +787,7 @@ impl PostgresArchive {
         blocks.into_iter()
             .map(|block| {
                 let events = events_by_block.remove(&block.id).unwrap_or_default();
-                let event_fields = vec!["id", "block_id", "index_in_block", "phase", "txHash",
+                let event_fields = vec!["id", "block_id", "index_in_block", "phase", "evmTxHash",
                                         "extrinsic_id", "call_id", "name", "args", "pos"];
                 let deduplicated_events = unify_and_merge(events, event_fields);
                 let calls = calls_by_block.remove(&block.id).unwrap_or_default();

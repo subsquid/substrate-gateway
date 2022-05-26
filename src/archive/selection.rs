@@ -265,6 +265,67 @@ impl EventFields {
 
 
 #[derive(Debug)]
+pub struct EvmLogFields {
+    pub _all: bool,
+    pub index_in_block: bool,
+    pub phase: bool,
+    pub extrinsic: ExtrinsicFields,
+    pub call: CallFields,
+    pub name: bool,
+    pub args: bool,
+    pub evm_tx_hash: bool,
+}
+
+
+impl EvmLogFields {
+    pub fn new(value: bool) -> Self {
+        EvmLogFields {
+            _all: value,
+            index_in_block: value,
+            phase: value,
+            extrinsic: ExtrinsicFields::new(value),
+            call: CallFields::new(value),
+            name: value,
+            args: value,
+            evm_tx_hash: value,
+        }
+    }
+
+    pub fn selected_fields(&self) -> Vec<String> {
+        let mut fields = vec![];
+        if self._all {
+            fields.push("index_in_block".to_string());
+            fields.push("phase".to_string());
+            fields.push("extrinsic_id".to_string());
+            fields.push("call_id".to_string());
+            fields.push("name".to_string());
+            fields.push("args".to_string());
+        } else {
+            if self.index_in_block {
+                fields.push("index_in_block".to_string());
+            }
+            if self.phase {
+                fields.push("phase".to_string());
+            }
+            if self.extrinsic.any() {
+                fields.push("extrinsic_id".to_string());
+            }
+            if self.call.any() {
+                fields.push("call_id".to_string());
+            }
+            if self.name {
+                fields.push("name".to_string());
+            }
+            if self.args {
+                fields.push("args".to_string());
+            }
+        }
+        fields
+    }
+}
+
+
+#[derive(Debug)]
 pub struct EventDataSelection {
     pub event: EventFields,
 }
@@ -325,16 +386,14 @@ impl CallDataSelection {
 
 #[derive(Debug)]
 pub struct EvmLogDataSelection {
-    pub tx_hash: bool,
-    pub substrate: EventDataSelection,
+    pub event: EvmLogFields,
 }
 
 
 impl EvmLogDataSelection {
     pub fn new(value: bool) -> Self {
         EvmLogDataSelection {
-            tx_hash: value,
-            substrate: EventDataSelection::new(value),
+            event: EvmLogFields::new(value),
         }
     }
 }

@@ -1,5 +1,5 @@
 use crate::archive::selection::{
-    ParentCallFields, CallFields, ExtrinsicFields, EventFields,
+    ParentCallFields, CallFields, ExtrinsicFields, EventFields, EvmLogFields,
     EventDataSelection, CallDataSelection, EventSelection, CallSelection,
     EvmLogDataSelection, EvmLogSelection, ContractsEventSelection,
 };
@@ -94,7 +94,7 @@ impl ExtrinsicFields {
 #[graphql(name = "EventFields")]
 pub struct EventFieldsInput {
     #[graphql(name="_all")]
-    pub  _all: Option<bool>,
+    pub _all: Option<bool>,
     pub index_in_block: Option<bool>,
     pub phase: Option<bool>,
     pub extrinsic: Option<ExtrinsicFieldsInput>,
@@ -122,6 +122,45 @@ impl EventFields {
             }),
             name: fields.name.unwrap_or(false),
             args: fields.args.unwrap_or(false),
+        }
+    }
+}
+
+
+#[derive(InputObject, Clone, Debug)]
+#[graphql(name = "EvmLogFields")]
+pub struct EvmLogFieldsInput {
+    #[graphql(name="_all")]
+    pub _all: Option<bool>,
+    pub index_in_block: Option<bool>,
+    pub phase: Option<bool>,
+    pub extrinsic: Option<ExtrinsicFieldsInput>,
+    pub call: Option<CallFieldsInput>,
+    pub name: Option<bool>,
+    pub args: Option<bool>,
+    pub evm_tx_hash: Option<bool>,
+}
+
+
+impl EvmLogFields {
+    pub fn from(fields: EvmLogFieldsInput) -> Self {
+        EvmLogFields {
+            _all: fields._all.unwrap_or(false),
+            index_in_block: fields.index_in_block.unwrap_or(false),
+            phase: fields.phase.unwrap_or(false),
+            extrinsic: fields.extrinsic.map_or_else(|| {
+                ExtrinsicFields::new(false)
+            }, |extrinsic| {
+                ExtrinsicFields::from(extrinsic)
+            }),
+            call: fields.call.map_or_else(|| {
+                CallFields::new(false)
+            }, |call| {
+                CallFields::from(call)
+            }),
+            name: fields.name.unwrap_or(false),
+            args: fields.args.unwrap_or(false),
+            evm_tx_hash: fields.evm_tx_hash.unwrap_or(false),
         }
     }
 }
@@ -219,19 +258,17 @@ impl CallSelection {
 #[derive(InputObject, Clone)]
 #[graphql(name = "EvmLogDataSelection")]
 pub struct EvmLogDataSelectionInput {
-    pub tx_hash: Option<bool>,
-    pub substrate: Option<EventDataSelectionInput>,
+    pub event: Option<EvmLogFieldsInput>,
 }
 
 
 impl EvmLogDataSelection {
     pub fn from(data: EvmLogDataSelectionInput) -> Self {
         EvmLogDataSelection {
-            tx_hash: data.tx_hash.unwrap_or(false),
-            substrate: data.substrate.map_or_else(|| {
-                EventDataSelection::new(true)
-            }, |substrate| {
-                EventDataSelection::from(substrate)
+            event: data.event.map_or_else(|| {
+                EvmLogFields::new(true)
+            }, |event| {
+                EvmLogFields::from(event)
             }),
         }
     }

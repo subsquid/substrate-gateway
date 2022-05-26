@@ -1,4 +1,4 @@
-use crate::archive::cockroach::CockroachArchive;
+// use crate::archive::cockroach::CockroachArchive;
 use crate::archive::postgres::PostgresArchive;
 use crate::archive::ArchiveService;
 use std::boxed::Box;
@@ -15,7 +15,7 @@ mod archive;
 
 pub enum DatabaseType {
     Postgres,
-    Cockroach,
+    // Cockroach,
 }
 
 pub struct ArchiveGateway {
@@ -43,7 +43,7 @@ impl ArchiveGateway {
     pub async fn run(&self) -> std::io::Result<()> {
         let archive: Box<dyn ArchiveService + Send + Sync> = match self.database_type {
             DatabaseType::Postgres => Box::new(PostgresArchive::new(self.pool.clone())),
-            DatabaseType::Cockroach => Box::new(CockroachArchive::new(self.pool.clone())),
+            // DatabaseType::Cockroach => Box::new(CockroachArchive::new(self.pool.clone())),
         };
         let query = QueryRoot { archive };
         let schema = Schema::build(query, EmptyMutation, EmptySubscription)

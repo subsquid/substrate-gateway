@@ -22,7 +22,7 @@ async fn main() -> std::io::Result<()> {
         .expect("DATABASE_TYPE env variable is required")
         .as_str() {
             "postgres" => DatabaseType::Postgres,
-            "cockroach" => DatabaseType::Cockroach,
+            // "cockroach" => DatabaseType::Cockroach,
             _ => panic!("DATABASE_TYPE env should be `postgres` or `cockroach`")
         };
     let max_connections = env::var("DATABASE_MAX_CONNECTIONS")

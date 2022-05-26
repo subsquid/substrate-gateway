@@ -1,8 +1,8 @@
 use crate::archive::selection::{
-    ParentCallFields, CallFields, ExtrinsicFields, EventFields,
     EventDataSelection, CallDataSelection, EventSelection, CallSelection,
     EvmLogDataSelection, EvmLogSelection, ContractsEventSelection,
 };
+use crate::archive::fields::{ParentCallFields, CallFields, ExtrinsicFields, EventFields};
 use async_graphql::InputObject;
 
 #[derive(InputObject, Clone, Debug)]

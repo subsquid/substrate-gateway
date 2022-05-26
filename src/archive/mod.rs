@@ -3,8 +3,9 @@ use crate::error::Error;
 use selection::{EventSelection, CallSelection, EvmLogSelection, ContractsEventSelection};
 
 pub mod selection;
-pub mod cockroach;
+// pub mod cockroach;
 pub mod postgres;
+pub mod fields;
 
 #[async_trait::async_trait]
 pub trait ArchiveService {

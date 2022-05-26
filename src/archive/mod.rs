@@ -3,7 +3,6 @@ use crate::error::Error;
 use selection::{EventSelection, CallSelection, EvmLogSelection, ContractsEventSelection};
 
 pub mod selection;
-pub mod cockroach;
 pub mod postgres;
 
 #[async_trait::async_trait]

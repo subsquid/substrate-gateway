@@ -24,39 +24,26 @@ impl ParentCallFields {
     }
 
     pub fn any(&self) -> bool {
-        if self._all {
-            return true;
-        }
-        if self.name {
-            return true;
-        }
-        if self.args {
-            return true;
-        }
-        if self.success {
-            return true;
-        }
-        if self.error {
-            return true;
-        }
-        if self.origin {
-            return true;
-        }
-        if self.parent {
-            return true;
-        }
-        false
+        self._all ||
+        self.name ||
+        self.args ||
+        self.success ||
+        self.error ||
+        self.origin ||
+        self.parent
     }
 
     pub fn selected_fields(&self) -> Vec<String> {
         let mut fields = vec![];
         if self._all {
-            fields.push("name".to_string());
-            fields.push("args".to_string());
-            fields.push("success".to_string());
-            fields.push("error".to_string());
-            fields.push("origin".to_string());
-            fields.push("parent_id".to_string());
+            fields.extend_from_slice(&[
+                "name".to_string(),
+                "args".to_string(),
+                "success".to_string(),
+                "error".to_string(),
+                "origin".to_string(),
+                "parent_id".to_string(),
+            ]);
         } else {
             if self.name {
                 fields.push("name".to_string());
@@ -108,39 +95,26 @@ impl CallFields {
     }
 
     pub fn any(&self) -> bool {
-        if self._all {
-            return true;
-        }
-        if self.success {
-            return true;
-        }
-        if self.error {
-            return true;
-        }
-        if self.origin {
-            return true;
-        }
-        if self.name {
-            return true;
-        }
-        if self.args {
-            return true;
-        }
-        if self.parent.any() {
-            return true;
-        }
-        false
+        self._all ||
+        self.success ||
+        self.error ||
+        self.origin ||
+        self.name ||
+        self.args ||
+        self.parent.any()
     }
 
     pub fn selected_fields(&self) -> Vec<String> {
         let mut fields = vec![];
         if self._all {
-            fields.push("success".to_string());
-            fields.push("error".to_string());
-            fields.push("origin".to_string());
-            fields.push("name".to_string());
-            fields.push("args".to_string());
-            fields.push("parent_id".to_string());
+            fields.extend_from_slice(&[
+                "success".to_string(),
+                "error".to_string(),
+                "origin".to_string(),
+                "name".to_string(),
+                "args".to_string(),
+                "parent_id".to_string(),
+            ]);
         } else {
             if self.success {
                 fields.push("success".to_string());
@@ -198,51 +172,32 @@ impl ExtrinsicFields {
     }
 
     pub fn any(&self) -> bool {
-        if self._all {
-            return true;
-        }
-        if self.index_in_block {
-            return true;
-        }
-        if self.version {
-            return true;
-        }
-        if self.signature {
-            return true;
-        }
-        if self.success {
-            return true;
-        }
-        if self.error {
-            return true;
-        }
-        if self.hash {
-            return true;
-        }
-        if self.call.any() {
-            return true;
-        }
-        if self.fee {
-            return true;
-        }
-        if self.tip {
-            return true;
-        }
-        false
+        self._all ||
+        self.index_in_block ||
+        self.version ||
+        self.signature ||
+        self.success ||
+        self.error ||
+        self.hash ||
+        self.call.any() ||
+        self.fee ||
+        self.tip
     }
 
     pub fn selected_fields(&self) -> Vec<String> {
         let mut fields = vec![];
         if self._all {
-            fields.push("index_in_block".to_string());
-            fields.push("version".to_string());
-            fields.push("signature".to_string());
-            fields.push("success".to_string());
-            fields.push("error".to_string());
-            fields.push("hash".to_string());
-            fields.push("call_id".to_string());
-            fields.push("fee".to_string());
-            fields.push("tip".to_string());
+            fields.extend_from_slice(&[
+                "index_in_block".to_string(),
+                "version".to_string(),
+                "signature".to_string(),
+                "success".to_string(),
+                "error".to_string(),
+                "hash".to_string(),
+                "call_id".to_string(),
+                "fee".to_string(),
+                "tip".to_string(),
+            ]);
         } else {
             if self.index_in_block {
                 fields.push("index_in_block".to_string());
@@ -305,12 +260,14 @@ impl EventFields {
     pub fn selected_fields(&self) -> Vec<String> {
         let mut fields = vec![];
         if self._all {
-            fields.push("index_in_block".to_string());
-            fields.push("phase".to_string());
-            fields.push("extrinsic_id".to_string());
-            fields.push("call_id".to_string());
-            fields.push("name".to_string());
-            fields.push("args".to_string());
+            fields.extend_from_slice(&[
+                "index_in_block".to_string(),
+                "phase".to_string(),
+                "extrinsic_id".to_string(),
+                "call_id".to_string(),
+                "name".to_string(),
+                "args".to_string(),
+            ]);
         } else {
             if self.index_in_block {
                 fields.push("index_in_block".to_string());
@@ -366,12 +323,14 @@ impl EvmLogFields {
     pub fn selected_fields(&self) -> Vec<String> {
         let mut fields = vec![];
         if self._all {
-            fields.push("index_in_block".to_string());
-            fields.push("phase".to_string());
-            fields.push("extrinsic_id".to_string());
-            fields.push("call_id".to_string());
-            fields.push("name".to_string());
-            fields.push("args".to_string());
+            fields.extend_from_slice(&[
+                "index_in_block".to_string(),
+                "phase".to_string(),
+                "extrinsic_id".to_string(),
+                "call_id".to_string(),
+                "name".to_string(),
+                "args".to_string(),
+            ]);
         } else {
             if self.index_in_block {
                 fields.push("index_in_block".to_string());

@@ -31,10 +31,6 @@ impl ArchiveGateway {
     }
 
     pub async fn run(&self) -> std::io::Result<()> {
-        // let archive: Box<dyn ArchiveService + Send + Sync> = match self.database_type {
-        //     DatabaseType::Postgres => Box::new(PostgresArchive::new(self.pool.clone())),
-        //     DatabaseType::Cockroach => Box::new(CockroachArchive::new(self.pool.clone())),
-        // };
         let archive = Box::new(PostgresArchive::new(self.pool.clone()));
         let query = QueryRoot { archive };
         let schema = Schema::build(query, EmptyMutation, EmptySubscription)

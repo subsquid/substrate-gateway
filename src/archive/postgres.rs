@@ -30,6 +30,44 @@ fn unify_and_merge(values: Vec<Value>, fields: Vec<&str>) -> Vec<Value> {
         .collect()
 }
 
+const WILDCARD: &str = "*";
+
+impl CallSelection {
+    pub fn condition(&self) -> String {
+        if self.name == WILDCARD {
+            "true".to_string()
+        } else {
+            format!("call.name = '{}'", self.name)
+        }
+    }
+
+    pub fn r#match(&self, call: &Call) -> bool {
+        self.name == WILDCARD || self.name == call.name
+    }
+}
+
+impl EventSelection {
+    pub fn condition(&self) -> String {
+        if self.name == WILDCARD {
+            "true".to_string()
+        } else {
+            format!("event.name = '{}'", self.name)
+        }
+    }
+
+    pub fn r#match(&self, event: &Event) -> bool {
+        self.name == WILDCARD || self.name == event.name
+    }
+}
+
+fn merge<T: std::cmp::PartialEq + std::clone::Clone>(target: &mut Vec<T>, other: &Vec<T>) {
+    for item in other {
+        if !target.contains(item) {
+            target.push(item.clone());
+        }
+    }
+}
+
 pub struct PostgresArchive {
     pool: Pool<Postgres>,
 }
@@ -141,6 +179,7 @@ impl PostgresArchive {
                         .collect::<Vec<String>>()
                         .join(", ");
                     let to_block = to_block.map_or("null".to_string(), |to_block| to_block.to_string());
+                    let name_condition = selection.condition();
                     format!("(
                         SELECT
                             block_id,
@@ -165,7 +204,7 @@ impl PostgresArchive {
                                         FROM call
                                         INNER JOIN block
                                         ON call.block_id = block.id
-                                        WHERE call.name = '{}' AND block.height >= {} AND ({} IS null OR block.height <= {})
+                                        WHERE {} AND block.height >= {} AND ({} IS null OR block.height <= {})
                                         GROUP BY call.block_id
                                         LIMIT {}
                                     ) AS calls_by_block
@@ -184,7 +223,7 @@ impl PostgresArchive {
                             ) SELECT DISTINCT * FROM child_call
                         ) AS calls
                         GROUP BY block_id
-                    )", &build_object_fields, &selection.name, from_block, to_block, to_block, limit, &parent_build_object_fields)
+                    )", &build_object_fields, &name_condition, from_block, to_block, to_block, limit, &parent_build_object_fields)
                 } else {
                     let mut selected_fields = selection.data.selected_fields();
                     selected_fields.push("id".to_string());
@@ -195,6 +234,7 @@ impl PostgresArchive {
                         .collect::<Vec<String>>()
                         .join(", ");
                     let to_block = to_block.map_or("null".to_string(), |to_block| to_block.to_string());
+                    let name_condition = selection.condition();
                     format!("(
                         SELECT
                             call.block_id,
@@ -205,10 +245,10 @@ impl PostgresArchive {
                         FROM call
                         INNER JOIN block
                         ON call.block_id = block.id
-                        WHERE call.name = '{}' AND block.height >= {} AND ({} IS null OR block.height <= {})
+                        WHERE {} AND block.height >= {} AND ({} IS null OR block.height <= {})
                         GROUP BY call.block_id
                         LIMIT {}
-                    )", &build_object_fields, &selection.name, from_block, to_block, to_block, limit)
+                    )", &build_object_fields, &name_condition, from_block, to_block, to_block, limit)
                 }
             })
             .collect::<Vec<String>>()
@@ -258,6 +298,7 @@ impl PostgresArchive {
                     .collect::<Vec<String>>()
                     .join(", ");
                 let to_block = to_block.map_or("null".to_string(), |to_block| to_block.to_string());
+                let name_condition = selection.condition();
                 format!("(
                     SELECT
                         event.block_id,
@@ -268,11 +309,11 @@ impl PostgresArchive {
                     FROM event
                     INNER JOIN block
                     ON event.block_id = block.id
-                    WHERE event.name = '{}' AND block.height >= {} AND ({} IS null OR block.height <= {})
+                    WHERE {} AND block.height >= {} AND ({} IS null OR block.height <= {})
                     GROUP BY block_id
                     ORDER BY block_id
                     LIMIT {}
-                )", &build_object_fields, &selection.name, from_block, to_block, to_block, limit)
+                )", &build_object_fields, &name_condition, from_block, to_block, to_block, limit)
             })
             .collect::<Vec<String>>()
             .join(" UNION ");
@@ -548,29 +589,34 @@ impl PostgresArchive {
     ) -> Result<Vec<Extrinsic>, Error> {
         let mut extrinsics_info = HashMap::new();
         for event in events {
-            let selection = event_selections.iter()
-                .find(|selection| selection.name == event.name)
-                .unwrap();
-            let mut extrinsic_fields = selection.data.event.extrinsic.selected_fields();
-            if !extrinsic_fields.is_empty() {
-                extrinsic_fields.push("id".to_string());
-                extrinsic_fields.push("pos".to_string());
-                let extrinsic_id = event.data.get("extrinsic_id")
-                    .expect("extrinsic_id should be loaded").as_str().unwrap();
-                extrinsics_info.insert(extrinsic_id.clone(), extrinsic_fields);
+            let selections = event_selections.iter()
+                .filter(|selection| selection.r#match(event));
+            for selection in selections {
+                if let Some(value) = event.data.get("extrinsic_id") {
+                    if let Some(extrinsic_id) = value.as_str() {
+                        if selection.data.event.extrinsic.any() {
+                            let mut fields = selection.data.event.extrinsic.selected_fields();
+                            fields.extend_from_slice(&["id".to_string(), "pos".to_string()]);
+                            extrinsics_info.entry(extrinsic_id.clone())
+                                .and_modify(|extrinsic_fields| merge(extrinsic_fields, &fields))
+                                .or_insert(fields);
+                        }
+                    }
+                }
             }
         }
         for call in calls {
-            let selection = call_selections.iter()
-                .find(|selection| selection.name == call.name);
-            if let Some(selection) = selection {  // direct call
+            let selections = call_selections.iter()
+                .filter(|selection| selection.r#match(call));
+            for selection in selections {
                 let mut fields = selection.data.extrinsic.selected_fields();
                 if !fields.is_empty() {
-                    fields.push("id".to_string());
-                    fields.push("pos".to_string());
+                    fields.extend_from_slice(&["id".to_string(), "pos".to_string()]);
                     let extrinsic_id = call.data.get("extrinsic_id")
                         .expect("extrinsic_id should be loaded").as_str().unwrap();
-                    extrinsics_info.insert(extrinsic_id.clone(), fields);
+                    extrinsics_info.entry(extrinsic_id.clone())
+                        .and_modify(|extrinsic_fields| merge(extrinsic_fields, &fields))
+                        .or_insert(fields);
                 }
             }
         }
@@ -621,21 +667,22 @@ impl PostgresArchive {
     ) -> Result<Vec<Call>, Error> {
         let mut calls_info = HashMap::new();
         for event in events {
-            let selection = event_selections.iter()
-                .find(|selection| selection.name == event.name)
-                .unwrap();
-            let mut call_fields = selection.data.event.call.selected_fields();
-            if !call_fields.is_empty() {
-                call_fields.push("id".to_string());
-                call_fields.push("pos".to_string());
-                let call_id = event.data.get("call_id")
-                    .expect("call_id should be loaded").as_str();
-                if let Some(call_id) = call_id {
-                    calls_info.insert(call_id.clone(), call_fields);
+            let selections = event_selections.iter()
+                .filter(|selection| selection.r#match(event));
+            for selection in selections {
+                if let Some(value) = event.data.get("call_id") {
+                    if let Some(call_id) = value.as_str() {
+                        if selection.data.event.call.any() {
+                            let mut fields = selection.data.event.call.selected_fields();
+                            fields.extend_from_slice(&["id".to_string(), "pos".to_string()]);
+                            calls_info.entry(call_id.clone())
+                                .and_modify(|call_fields| merge(call_fields, &fields))
+                                .or_insert(fields);
+                        }
+                    }
                 }
             }
         }
-        // check intersection between already loaded calls
         let query = calls_info.into_iter()
             .map(|(key, value)| {
                 let build_object_fields = value

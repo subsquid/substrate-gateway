@@ -73,7 +73,7 @@ async fn test_evm_log_has_tx_hash() {
 #[actix_web::test]
 async fn test_contracts_events() {
     launch_gateway();
-    let client = common::Client::new();
+    let client = Client::new();
     let batch = client.batch(json!({
         "limit": 1 as i32,
         "contractsEvents": [{
@@ -87,4 +87,21 @@ async fn test_contracts_events() {
     })).await;
     let event = &batch.events[0];
     assert!(event.id == "0000000734-000004-251d1".to_string());
+}
+
+#[actix_web::test]
+async fn test_wildcard_search() {
+    launch_gateway();
+    let client = Client::new();
+    let batch = client.batch(json!({
+        "limit": 1,
+        "calls": [{"name": "*"}],
+        "events": [{"name": "*"}],
+    })).await;
+    let event = &batch.events[0];
+    assert!(event.id == "0000000734-000004-251d1".to_string());
+    assert!(event.name.as_ref().unwrap() == &"Contracts.ContractEmitted".to_string());
+    let call = &batch.calls[0];
+    assert!(call.id == "0000000734-000001-251d1".to_string());
+    assert!(call.name.as_ref().unwrap() == &"Contracts.call".to_string());
 }

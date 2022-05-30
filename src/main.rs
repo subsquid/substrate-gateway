@@ -1,37 +1,42 @@
-use std::env;
 use std::time::Duration;
+use clap::Parser;
 use sqlx::postgres::PgPoolOptions;
 use archive_gateway::ArchiveGateway;
 
 mod logger;
 
+#[derive(Parser, Debug)]
+#[clap(about)]
+struct Args {
+    /// Database connection string
+    #[clap(long)]
+    database_url: String,
+
+    /// Maximum number of connections supported by pool
+    #[clap(long, default_value_t = 1)]
+    database_max_connections: u32,
+
+    /// EVM pallet support
+    #[clap(long)]
+    evm_support: bool,
+
+    /// Сontracts pallet support
+    #[clap(long)]
+    contracts_support: bool,
+}
+
 #[tracing::instrument]
 #[actix_web::main]
 async fn main() -> std::io::Result<()> {
+    let args = Args::parse();
     logger::init();
 
-    let database_url = env::var("DATABASE_URL")
-        .expect("DATABASE_URL env variable is required");
-    let max_connections = env::var("DATABASE_MAX_CONNECTIONS")
-        .expect("DATABASE_MAX_CONNECTIONS env variable is required")
-        .parse::<u32>()
-        .unwrap();
-    let evm_support = env::var("EVM_SUPPORT")
-        .expect("EVM_SUPPORT env variable is required")
-        .parse::<bool>()
-        .unwrap();
-    let contracts_support = match env::var("CONTRACTS_SUPPORT") {
-        Ok(variable) => {
-            variable.parse::<bool>().expect("CONTRACTS_SUPPORT parsing error")
-        }
-        Err(_) => false
-    };
     let pool = PgPoolOptions::new()
-        .max_connections(max_connections)
+        .max_connections(args.database_max_connections)
         .connect_timeout(Duration::from_secs(5))
-        .connect_lazy(&database_url)
+        .connect_lazy(&args.database_url)
         .unwrap();
-    ArchiveGateway::new(pool, evm_support, contracts_support)
+    ArchiveGateway::new(pool, args.evm_support, args.contracts_support)
         .run()
         .await
 }

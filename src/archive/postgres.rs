@@ -161,6 +161,10 @@ impl PostgresArchive {
         }
         let query_dynamic_part = call_selections.iter()
             .map(|selection| {
+                let from_block = format!("{:010}", from_block);
+                let to_block = to_block.map_or("null".to_string(), |to_block| format!("{:010}", to_block));
+                let name_condition = selection.condition();
+
                 if selection.data.call.parent.any() {
                     let mut selected_fields = selection.data.selected_fields();
                     selected_fields.push("id".to_string());
@@ -178,8 +182,6 @@ impl PostgresArchive {
                         .map(|field| format!("'{}', call.{}", &field, &field))
                         .collect::<Vec<String>>()
                         .join(", ");
-                    let to_block = to_block.map_or("null".to_string(), |to_block| to_block.to_string());
-                    let name_condition = selection.condition();
                     format!("(
                         SELECT
                             block_id,
@@ -202,9 +204,7 @@ impl PostgresArchive {
                                             call.block_id,
                                             array_agg(call.id) AS calls
                                         FROM call
-                                        INNER JOIN block
-                                        ON call.block_id = block.id
-                                        WHERE {} AND block.height >= {} AND ({} IS null OR block.height <= {})
+                                        WHERE {} AND call.block_id >= '{}' AND ({} IS null OR call.block_id <= '{}')
                                         GROUP BY call.block_id
                                         LIMIT {}
                                     ) AS calls_by_block
@@ -233,8 +233,6 @@ impl PostgresArchive {
                         .map(|field| format!("'{}', call.{}", &field, &field))
                         .collect::<Vec<String>>()
                         .join(", ");
-                    let to_block = to_block.map_or("null".to_string(), |to_block| to_block.to_string());
-                    let name_condition = selection.condition();
                     format!("(
                         SELECT
                             call.block_id,
@@ -243,9 +241,7 @@ impl PostgresArchive {
                                 'data', jsonb_build_object({})
                             )) as calls
                         FROM call
-                        INNER JOIN block
-                        ON call.block_id = block.id
-                        WHERE {} AND block.height >= {} AND ({} IS null OR block.height <= {})
+                        WHERE {} AND call.block_id >= '{}' AND ({} IS null OR call.block_id <= '{}')
                         GROUP BY call.block_id
                         LIMIT {}
                     )", &build_object_fields, &name_condition, from_block, to_block, to_block, limit)
@@ -297,7 +293,8 @@ impl PostgresArchive {
                     .map(|field| format!("'{}', event.{}", &field, &field))
                     .collect::<Vec<String>>()
                     .join(", ");
-                let to_block = to_block.map_or("null".to_string(), |to_block| to_block.to_string());
+                let from_block = format!("{:010}", from_block);
+                let to_block = to_block.map_or("null".to_string(), |to_block| format!("{:010}", to_block));
                 let name_condition = selection.condition();
                 format!("(
                     SELECT
@@ -307,9 +304,7 @@ impl PostgresArchive {
                             'data', jsonb_build_object({})
                         )) as events
                     FROM event
-                    INNER JOIN block
-                    ON event.block_id = block.id
-                    WHERE {} AND block.height >= {} AND ({} IS null OR block.height <= {})
+                    WHERE {} AND event.block_id >= '{}' AND ({} IS null OR event.block_id <= '{}')
                     GROUP BY block_id
                     ORDER BY block_id
                     LIMIT {}
@@ -362,7 +357,8 @@ impl PostgresArchive {
                     .map(|field| format!("'{}', event.{}", &field, &field))
                     .collect::<Vec<String>>()
                     .join(", ");
-                let to_block = to_block.map_or("null".to_string(), |to_block| to_block.to_string());
+                let from_block = format!("{:010}", from_block);
+                let to_block = to_block.map_or("null".to_string(), |to_block| format!("{:010}", to_block));
                 format!("(
                     SELECT
                         event.block_id,
@@ -371,9 +367,7 @@ impl PostgresArchive {
                             'data', jsonb_build_object({})
                         )) as events
                     FROM event
-                    INNER JOIN block
-                    ON event.block_id = block.id
-                    WHERE event.name = 'Contracts.ContractEmitted' AND block.height >= {} AND ({} IS null OR block.height <= {})
+                    WHERE event.name = 'Contracts.ContractEmitted' AND event.block_id >= '{}' AND ({} IS null OR event.block_id <= '{}')
                     GROUP BY block_id
                     ORDER BY block_id
                     LIMIT {}
@@ -431,11 +425,12 @@ impl PostgresArchive {
                     build_object_args.push(tx_hash);
                 }
                 let build_object_fields = build_object_args.join(", ");
-                let to_block = to_block.map_or("null".to_string(), |to_block| to_block.to_string());
+                let from_block = format!("{:010}", from_block);
+                let to_block = to_block.map_or("null".to_string(), |to_block| format!("{:010}", to_block));
                 let mut filters = vec![
                     "event.name = 'EVM.Log'".to_string(),
-                    format!("block.height >= {}", from_block),
-                    format!("({} IS null OR block.height <= {})", to_block, to_block),
+                    format!("event.block_id >= '{}'", from_block),
+                    format!("({} IS null OR event.block_id <= '{}')", to_block, to_block),
                     format!("event.args -> 'address' = '\"{}\"'", &selection.contract),
                 ];
                 let topics_filters: Vec<String> = selection.filter.iter()
@@ -468,8 +463,6 @@ impl PostgresArchive {
                             )
                         ) AS logs
                     FROM event
-                    INNER JOIN block
-                        ON event.block_id = block.id
                     INNER JOIN event executed_event
                         ON event.extrinsic_id = executed_event.extrinsic_id
                             AND executed_event.name = 'Ethereum.Executed'

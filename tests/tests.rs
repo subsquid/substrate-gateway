@@ -75,7 +75,7 @@ async fn test_contracts_events() {
     launch_gateway();
     let client = Client::new();
     let batch = client.batch(json!({
-        "limit": 1 as i32,
+        "limit": 1,
         "contractsEvents": [{
             "contract": "0xf98402623dbe32d22b67e0a25136b763615c14fd4201b1aac8832ec52aa64d10",
             "data": {

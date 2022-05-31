@@ -1,7 +1,7 @@
 use tracing_subscriber::EnvFilter;
 
 fn is_tty() -> bool {
-    unsafe { libc::isatty(libc::STDERR_FILENO) != 0 }
+    unsafe { libc::isatty(libc::STDOUT_FILENO) != 0 }
 }
 
 pub fn init() {

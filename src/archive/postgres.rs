@@ -367,11 +367,11 @@ impl PostgresArchive {
                             'data', jsonb_build_object({})
                         )) as events
                     FROM event
-                    WHERE event.name = 'Contracts.ContractEmitted' AND event.block_id >= '{}' AND ({} IS null OR event.block_id <= '{}')
+                    WHERE event.contract = '{}' AND event.block_id >= '{}' AND ({} IS null OR event.block_id <= '{}')
                     GROUP BY block_id
                     ORDER BY block_id
                     LIMIT {}
-                )", index, &build_object_fields, from_block, to_block, to_block, limit)
+                )", index, &build_object_fields, &selection.contract, from_block, to_block, to_block, limit)
             })
             .collect::<Vec<String>>()
             .join(" UNION ");
@@ -428,10 +428,9 @@ impl PostgresArchive {
                 let from_block = format!("{:010}", from_block);
                 let to_block = to_block.map_or("null".to_string(), |to_block| format!("{:010}", to_block));
                 let mut filters = vec![
-                    "event.name = 'EVM.Log'".to_string(),
+                    format!("event.contract = '{}'", &selection.contract),
                     format!("event.block_id >= '{}'", from_block),
                     format!("({} IS null OR event.block_id <= '{}')", to_block, to_block),
-                    format!("event.args -> 'address' = '\"{}\"'", &selection.contract),
                 ];
                 let topics_filters: Vec<String> = selection.filter.iter()
                     .enumerate()

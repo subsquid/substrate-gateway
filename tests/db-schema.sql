@@ -58,5 +58,6 @@ CREATE TABLE event (
     call_id varchar(30) references call,
     name varchar not null,
     args jsonb,
-    pos integer not null
+    pos integer not null,
+    contract varchar
 );

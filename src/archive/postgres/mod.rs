@@ -3,70 +3,12 @@ use super::selection::{CallSelection, EventSelection, EvmLogSelection, Contracts
 use crate::entities::{Batch, Metadata, Status, Call, Event, Extrinsic, BlockHeader, EvmLog, ContractsEvent};
 use crate::error::Error;
 use crate::metrics::ObserverExt;
-use serde_json::{Value, Map};
 use std::collections::HashMap;
 use sqlx::{Pool, Postgres};
+use utils::{unify_and_merge, merge};
 
-// removes duplicates and merge fields between two entities with the same id
-fn unify_and_merge(values: Vec<Value>, fields: Vec<&str>) -> Vec<Value> {
-    let mut instances_by_id = HashMap::new();
-    for value in values {
-        let id = value.get("id").unwrap().clone().as_str().unwrap().to_string();
-        instances_by_id.entry(id).or_insert_with(Vec::new).push(value);
-    }
-    instances_by_id.values()
-        .into_iter()
-        .map(|duplicates| {
-            let mut object = Map::new();
-            for field in &fields {
-                let instance = duplicates.into_iter()
-                    .find(|instance| instance.get(field).is_some());
-                if let Some(instance) = instance{
-                    object.insert(field.to_string(), instance.get(field).unwrap().clone());
-                }
-            }
-            Value::from(object)
-        })
-        .collect()
-}
-
-const WILDCARD: &str = "*";
-
-impl CallSelection {
-    pub fn condition(&self) -> String {
-        if self.name == WILDCARD {
-            "true".to_string()
-        } else {
-            format!("call.name = '{}'", self.name)
-        }
-    }
-
-    pub fn r#match(&self, call: &Call) -> bool {
-        self.name == WILDCARD || self.name == call.name
-    }
-}
-
-impl EventSelection {
-    pub fn condition(&self) -> String {
-        if self.name == WILDCARD {
-            "true".to_string()
-        } else {
-            format!("event.name = '{}'", self.name)
-        }
-    }
-
-    pub fn r#match(&self, event: &Event) -> bool {
-        self.name == WILDCARD || self.name == event.name
-    }
-}
-
-fn merge<T: std::cmp::PartialEq + std::clone::Clone>(target: &mut Vec<T>, other: &Vec<T>) {
-    for item in other {
-        if !target.contains(item) {
-            target.push(item.clone());
-        }
-    }
-}
+mod utils;
+mod selections;
 
 pub struct PostgresArchive {
     pool: Pool<Postgres>,

@@ -598,17 +598,19 @@ impl PostgresArchive {
             }
         }
         for call in calls {
-            let selections = call_selections.iter()
-                .filter(|selection| selection.r#match(call));
-            for selection in selections {
-                let mut fields = selection.data.extrinsic.selected_fields();
-                if !fields.is_empty() {
-                    fields.extend_from_slice(&["id".to_string(), "pos".to_string()]);
-                    let extrinsic_id = call.data.get("extrinsic_id")
-                        .expect("extrinsic_id should be loaded").as_str().unwrap();
-                    extrinsics_info.entry(extrinsic_id.clone())
-                        .and_modify(|extrinsic_fields| merge(extrinsic_fields, &fields))
-                        .or_insert(fields);
+            if let Some(value) = call.data.get("extrinsic_id") {
+                if let Some(extrinsic_id) = value.as_str() {
+                    let selections = call_selections.iter()
+                        .filter(|selection| selection.r#match(call));
+                    for selection in selections {
+                        if selection.data.extrinsic.any() {
+                            let mut fields = selection.data.extrinsic.selected_fields();
+                            fields.extend_from_slice(&["id".to_string(), "pos".to_string()]);
+                            extrinsics_info.entry(extrinsic_id.clone())
+                                .and_modify(|extrinsic_fields| merge(extrinsic_fields, &fields))
+                                .or_insert(fields);
+                        }
+                    }
                 }
             }
         }

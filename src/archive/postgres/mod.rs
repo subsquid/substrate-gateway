@@ -10,6 +10,22 @@ use utils::{unify_and_merge, merge};
 mod utils;
 mod selection;
 
+struct CallInfo {
+    pub fields: Vec<String>,
+    pub parent: Option<Vec<String>>,
+}
+
+impl CallInfo {
+    pub fn merge(&mut self, info: &CallInfo) {
+        merge(&mut self.fields, &info.fields);
+        if let Some(parent) = &mut self.parent {
+            if let Some(other_parent) = &info.parent {
+                merge(parent, &other_parent);
+            }
+        }
+    }
+}
+
 pub struct PostgresArchive {
     pool: Pool<Postgres>,
 }
@@ -611,9 +627,17 @@ impl PostgresArchive {
                         if selection.data.event.call.any() {
                             let mut fields = selection.data.event.call.selected_fields();
                             fields.extend_from_slice(&["id".to_string(), "pos".to_string()]);
+                            let parent = if selection.data.event.call.parent.any() {
+                                let mut fields = selection.data.event.call.parent.selected_fields();
+                                fields.extend_from_slice(&["id".to_string(), "pos".to_string()]);
+                                Some(fields)
+                            } else {
+                                None
+                            };
+                            let info = CallInfo { fields, parent };
                             calls_info.entry(call_id.clone())
-                                .and_modify(|call_fields| merge(call_fields, &fields))
-                                .or_insert(fields);
+                                .and_modify(|call_info: &mut CallInfo| call_info.merge(&info))
+                                .or_insert(info);
                         }
                     }
                 }
@@ -621,12 +645,25 @@ impl PostgresArchive {
         }
         let query = calls_info.into_iter()
             .map(|(key, value)| {
-                let build_object_fields = value
+                let build_object_fields = value.fields
                     .iter()
                     .map(|field| format!("'{}', {}", &field, &field))
                     .collect::<Vec<String>>()
                     .join(", ");
-                format!("(SELECT block_id, name, jsonb_build_object({}) as data FROM call WHERE id = '{}')", &build_object_fields, &key)
+                if let Some(parent) = value.parent {
+                    let parent_build_object_fields = parent
+                        .iter()
+                        .map(|field| format!("'{}', call.{}", &field, &field))
+                        .collect::<Vec<String>>()
+                        .join(", ");
+                    format!("(WITH RECURSIVE child_call AS (
+                        SELECT block_id, name, parent_id, jsonb_build_object({}) AS data FROM call WHERE id = '{}'
+                        UNION ALL
+                        SELECT call.block_id, call.name, call.parent_id, jsonb_build_object({}) AS data FROM call JOIN child_call ON child_call.parent_id = call.id
+                    ) SELECT block_id, name, data FROM child_call)", &build_object_fields, &key, &parent_build_object_fields)
+                } else {
+                    format!("(SELECT block_id, name, jsonb_build_object({}) as data FROM call WHERE id = '{}')", &build_object_fields, &key)
+                }
             })
             .collect::<Vec<String>>()
             .join(" UNION ");

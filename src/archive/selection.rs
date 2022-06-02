@@ -37,7 +37,6 @@ impl ParentCallFields {
         let mut fields = vec![];
         if self._all {
             fields.extend_from_slice(&[
-                "name".to_string(),
                 "args".to_string(),
                 "success".to_string(),
                 "error".to_string(),
@@ -45,9 +44,6 @@ impl ParentCallFields {
                 "parent_id".to_string(),
             ]);
         } else {
-            if self.name {
-                fields.push("name".to_string());
-            }
             if self.args {
                 fields.push("args".to_string());
             }
@@ -111,7 +107,6 @@ impl CallFields {
                 "success".to_string(),
                 "error".to_string(),
                 "origin".to_string(),
-                "name".to_string(),
                 "args".to_string(),
                 "parent_id".to_string(),
             ]);
@@ -124,9 +119,6 @@ impl CallFields {
             }
             if self.origin {
                 fields.push("origin".to_string());
-            }
-            if self.name {
-                fields.push("name".to_string());
             }
             if self.args {
                 fields.push("args".to_string());
@@ -265,7 +257,6 @@ impl EventFields {
                 "phase".to_string(),
                 "extrinsic_id".to_string(),
                 "call_id".to_string(),
-                "name".to_string(),
                 "args".to_string(),
             ]);
         } else {
@@ -280,9 +271,6 @@ impl EventFields {
             }
             if self.call.any() {
                 fields.push("call_id".to_string());
-            }
-            if self.name {
-                fields.push("name".to_string());
             }
             if self.args {
                 fields.push("args".to_string());
@@ -328,7 +316,6 @@ impl EvmLogFields {
                 "phase".to_string(),
                 "extrinsic_id".to_string(),
                 "call_id".to_string(),
-                "name".to_string(),
                 "args".to_string(),
             ]);
         } else {
@@ -343,9 +330,6 @@ impl EvmLogFields {
             }
             if self.call.any() {
                 fields.push("call_id".to_string());
-            }
-            if self.name {
-                fields.push("name".to_string());
             }
             if self.args {
                 fields.push("args".to_string());

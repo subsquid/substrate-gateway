@@ -125,11 +125,9 @@ impl PostgresArchive {
 
                 if selection.data.call.parent.any() {
                     let mut selected_fields = selection.data.selected_fields();
-                    selected_fields.push("id".to_string());
-                    selected_fields.push("pos".to_string());
+                    selected_fields.extend_from_slice(&["id".to_string(), "pos".to_string(), "name".to_string()]);
                     let mut parent_selected_fields = selection.data.call.parent.selected_fields();
-                    parent_selected_fields.push("id".to_string());
-                    parent_selected_fields.push("pos".to_string());
+                    parent_selected_fields.extend_from_slice(&["id".to_string(), "pos".to_string(), "name".to_string()]);
                     let build_object_fields = selected_fields
                         .iter()
                         .map(|field| format!("'{}', call.{}", &field, &field))
@@ -184,8 +182,7 @@ impl PostgresArchive {
                     )", &build_object_fields, &name_condition, from_block, to_block, to_block, limit, &parent_build_object_fields)
                 } else {
                     let mut selected_fields = selection.data.selected_fields();
-                    selected_fields.push("id".to_string());
-                    selected_fields.push("pos".to_string());
+                    selected_fields.extend_from_slice(&["id".to_string(), "pos".to_string(), "name".to_string()]);
                     let build_object_fields = selected_fields
                         .iter()
                         .map(|field| format!("'{}', call.{}", &field, &field))
@@ -244,8 +241,7 @@ impl PostgresArchive {
         let query_dynamic_part = event_selections.iter()
             .map(|selection| {
                 let mut selected_fields = selection.data.event.selected_fields();
-                selected_fields.push("id".to_string());
-                selected_fields.push("pos".to_string());
+                selected_fields.extend_from_slice(&["id".to_string(), "pos".to_string(), "name".to_string()]);
                 let build_object_fields = selected_fields
                     .iter()
                     .map(|field| format!("'{}', event.{}", &field, &field))
@@ -308,8 +304,7 @@ impl PostgresArchive {
             .enumerate()
             .map(|(index, selection)| {
                 let mut selected_fields = selection.data.event.selected_fields();
-                selected_fields.push("id".to_string());
-                selected_fields.push("pos".to_string());
+                selected_fields.extend_from_slice(&["id".to_string(), "pos".to_string(), "name".to_string()]);
                 let build_object_fields = selected_fields
                     .iter()
                     .map(|field| format!("'{}', event.{}", &field, &field))
@@ -371,8 +366,7 @@ impl PostgresArchive {
             .enumerate()
             .map(|(index, selection)| {
                 let mut selected_fields = selection.data.event.selected_fields();
-                selected_fields.push("id".to_string());
-                selected_fields.push("pos".to_string());
+                selected_fields.extend_from_slice(&["id".to_string(), "pos".to_string(), "name".to_string()]);
                 let mut build_object_args: Vec<String> = selected_fields
                     .iter()
                     .map(|field| format!("'{}', event.{}", &field, &field))
@@ -576,8 +570,7 @@ impl PostgresArchive {
             let selection = &evm_log_selections[log.selection_index as usize];
             let mut fields = selection.data.event.extrinsic.selected_fields();
             if !fields.is_empty() {
-                fields.push("id".to_string());
-                fields.push("pos".to_string());
+                fields.extend_from_slice(&["id".to_string(), "pos".to_string()]);
                 let extrinsic_id = log.data.get("extrinsic_id")
                     .expect("extrinsic_id should be loaded").as_str().unwrap();
                 extrinsics_info.insert(extrinsic_id.clone(), fields);
@@ -587,8 +580,7 @@ impl PostgresArchive {
             let selection = &contracts_events_selections[event.selection_index as usize];
             let mut fields = selection.data.event.extrinsic.selected_fields();
             if !fields.is_empty() {
-                fields.push("id".to_string());
-                fields.push("pos".to_string());
+                fields.extend_from_slice(&["id".to_string(), "pos".to_string()]);
                 let extrinsic_id = event.data.get("extrinsic_id")
                     .expect("extrinsic_id should be loaded").as_str().unwrap();
                 extrinsics_info.insert(extrinsic_id.clone(), fields);
@@ -626,10 +618,10 @@ impl PostgresArchive {
                     if let Some(call_id) = value.as_str() {
                         if selection.data.event.call.any() {
                             let mut fields = selection.data.event.call.selected_fields();
-                            fields.extend_from_slice(&["id".to_string(), "pos".to_string()]);
+                            fields.extend_from_slice(&["id".to_string(), "pos".to_string(), "name".to_string()]);
                             let parent = if selection.data.event.call.parent.any() {
                                 let mut fields = selection.data.event.call.parent.selected_fields();
-                                fields.extend_from_slice(&["id".to_string(), "pos".to_string()]);
+                                fields.extend_from_slice(&["id".to_string(), "pos".to_string(), "name".to_string()]);
                                 Some(fields)
                             } else {
                                 None
@@ -684,8 +676,7 @@ impl PostgresArchive {
             let selection = &contracts_event_selections[event.selection_index as usize];
             let mut call_fields = selection.data.event.call.selected_fields();
             if !call_fields.is_empty() {
-                call_fields.push("id".to_string());
-                call_fields.push("pos".to_string());
+                call_fields.extend_from_slice(&["id".to_string(), "pos".to_string(), "name".to_string()]);
                 let call_id = event.data.get("call_id")
                     .expect("call_id should be loaded").as_str();
                 if let Some(call_id) = call_id {
@@ -723,8 +714,7 @@ impl PostgresArchive {
             let selection = &evm_log_selections[log.selection_index as usize];
             let mut fields = selection.data.event.call.selected_fields();
             if !fields.is_empty() {
-                fields.push("id".to_string());
-                fields.push("pos".to_string());
+                fields.extend_from_slice(&["id".to_string(), "pos".to_string(), "name".to_string()]);
                 let call_id = log.data.get("call_id")
                     .expect("call_id should be loaded").as_str().unwrap();
                 calls_info.insert(call_id.clone(), fields);

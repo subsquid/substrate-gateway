@@ -1,14 +1,17 @@
 use super::ArchiveService;
 use super::selection::{CallSelection, EventSelection, EvmLogSelection, ContractsEventSelection};
-use crate::entities::{Batch, Metadata, Status, Call, Event, Extrinsic, BlockHeader, EvmLog, ContractsEvent};
+use super::fields::ExtrinsicFields;
+use crate::entities::{Batch, Metadata, Status, Call, Event, BlockHeader, EvmLog, ContractsEvent};
 use crate::error::Error;
 use crate::metrics::ObserverExt;
 use std::collections::HashMap;
+use serde::ser::SerializeStruct;
 use sqlx::{Pool, Postgres};
 use utils::{unify_and_merge, merge};
 
 mod utils;
 mod selection;
+mod fields;
 
 struct CallInfo {
     pub fields: Vec<String>,
@@ -23,6 +26,56 @@ impl CallInfo {
                 merge(parent, &other_parent);
             }
         }
+    }
+}
+
+struct CallGroup {
+    call_info: CallInfo,
+    ids: Vec<String>,
+}
+
+#[derive(sqlx::FromRow)]
+struct Extrinsic {
+    pub id: String,
+    pub block_id: String,
+    pub index_in_block: i64,
+    pub version: i64,
+    pub signature: Option<serde_json::Value>,
+    pub call_id: String,
+    pub fee: Option<i64>,
+    pub tip: Option<i64>,
+    pub success: bool,
+    pub error: Option<serde_json::Value>,
+    pub pos: i64,
+    pub hash: String
+}
+
+struct ExtrinsicSerializer<'a> {
+    pub extrinsic: &'a Extrinsic,
+    pub fields: &'a ExtrinsicFields,
+}
+
+impl<'a> serde::Serialize for ExtrinsicSerializer<'a> {
+    fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        let fields = self.fields.selected_fields();
+        let mut state = serializer.serialize_struct("Extrinsic", fields.len() + 2)?;
+        state.serialize_field("id", &self.extrinsic.id)?;
+        state.serialize_field("pos", &self.extrinsic.pos)?;
+        for field in fields {
+            match field {
+                "index_in_block" => state.serialize_field("index_in_block", &self.extrinsic.index_in_block)?,
+                "version" => state.serialize_field("version", &self.extrinsic.version)?,
+                "signature" => state.serialize_field("signature", &self.extrinsic.signature)?,
+                "call_id" => state.serialize_field("call_id", &self.extrinsic.call_id)?,
+                "fee" => state.serialize_field("fee", &self.extrinsic.fee)?,
+                "tip" => state.serialize_field("tip", &self.extrinsic.tip)?,
+                "success" => state.serialize_field("success", &self.extrinsic.success)?,
+                "error" => state.serialize_field("error", &self.extrinsic.error)?,
+                "hash" => state.serialize_field("hash", &self.extrinsic.hash)?,
+                _ => panic!("unexpected field"),
+            };
+        }
+        state.end()
     }
 }
 
@@ -60,13 +113,43 @@ impl ArchiveService for PostgresArchive {
                 .filter(|event| block_ids.contains(&event.block_id)).collect();
             self.get_blocks_by_ids(&block_ids).await?
         };
-        let extrinsics = self.get_extrinsics(&event_selections, &call_selections, &evm_log_selections, &contracts_event_selections,
-                                             &events, &calls, &evm_logs, &contracts_events).await?;
+
+        let mut extrinsic_fields: HashMap<String, ExtrinsicFields> = HashMap::new();
+        for event in &events {
+            if let Some(value) = event.data.get("extrinsic_id") {
+                if let Some(extrinsic_id) = value.as_str() {
+                    for selection in event_selections {
+                        if selection.r#match(event) {
+                            if selection.data.event.extrinsic.any() {
+                                extrinsic_fields.entry(extrinsic_id.to_string())
+                                    .and_modify(|fields| fields.merge(&selection.data.event.extrinsic))
+                                    .or_insert_with(|| selection.data.event.extrinsic.clone());
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        let extrinsic_ids = extrinsic_fields.keys().cloned().collect();
+        let extrinsics = self.load_extrinsics(&extrinsic_ids).await?;
+        let mut extrinsics_by_block: HashMap<String, Vec<serde_json::Value>> = HashMap::new();
+        for extrinsic in extrinsics {
+            let fields = extrinsic_fields.get(&extrinsic.id).unwrap();
+            let serializer = ExtrinsicSerializer { extrinsic: &extrinsic, fields };
+            let data = serde_json::to_value(serializer).unwrap();
+            if extrinsics_by_block.contains_key(&extrinsic.block_id) {
+                extrinsics_by_block.get_mut(&extrinsic.block_id).unwrap().push(data);
+            } else {
+                extrinsics_by_block.insert(extrinsic.block_id.clone(), vec![data]);
+            }
+        }
+
         let events_calls = self.get_events_calls(&event_selections, &events).await?;
         let evm_logs_calls = self.get_evm_logs_calls(&evm_log_selections, &evm_logs).await?;
         let contracts_events_calls = self.get_contracts_events_calls(
             &contracts_event_selections, &contracts_events).await?;
-        let batch = self.create_batch(blocks, events, calls, extrinsics, events_calls,
+        let batch = self.create_batch(blocks, events, calls, extrinsics_by_block, events_calls,
                                       evm_logs, evm_logs_calls, contracts_events, contracts_events_calls);
         Ok(batch)
     }
@@ -520,84 +603,23 @@ impl PostgresArchive {
         Ok(blocks)
     }
 
-    async fn get_extrinsics(
-        &self,
-        event_selections: &Vec<EventSelection>,
-        call_selections: &Vec<CallSelection>,
-        evm_log_selections: &Vec<EvmLogSelection>,
-        contracts_events_selections: &Vec<ContractsEventSelection>,
-        events: &Vec<Event>,
-        calls: &Vec<Call>,
-        evm_logs: &Vec<EvmLog>,
-        contracts_events: &Vec<ContractsEvent>,
-    ) -> Result<Vec<Extrinsic>, Error> {
-        let mut extrinsics_info = HashMap::new();
-        for event in events {
-            let selections = event_selections.iter()
-                .filter(|selection| selection.r#match(event));
-            for selection in selections {
-                if let Some(value) = event.data.get("extrinsic_id") {
-                    if let Some(extrinsic_id) = value.as_str() {
-                        if selection.data.event.extrinsic.any() {
-                            let mut fields = selection.data.event.extrinsic.selected_fields();
-                            fields.extend_from_slice(&["id".to_string(), "pos".to_string()]);
-                            extrinsics_info.entry(extrinsic_id.clone())
-                                .and_modify(|extrinsic_fields| merge(extrinsic_fields, &fields))
-                                .or_insert(fields);
-                        }
-                    }
-                }
-            }
-        }
-        for call in calls {
-            if let Some(value) = call.data.get("extrinsic_id") {
-                if let Some(extrinsic_id) = value.as_str() {
-                    let selections = call_selections.iter()
-                        .filter(|selection| selection.r#match(call));
-                    for selection in selections {
-                        if selection.data.extrinsic.any() {
-                            let mut fields = selection.data.extrinsic.selected_fields();
-                            fields.extend_from_slice(&["id".to_string(), "pos".to_string()]);
-                            extrinsics_info.entry(extrinsic_id.clone())
-                                .and_modify(|extrinsic_fields| merge(extrinsic_fields, &fields))
-                                .or_insert(fields);
-                        }
-                    }
-                }
-            }
-        }
-        for log in evm_logs {
-            let selection = &evm_log_selections[log.selection_index as usize];
-            let mut fields = selection.data.event.extrinsic.selected_fields();
-            if !fields.is_empty() {
-                fields.extend_from_slice(&["id".to_string(), "pos".to_string()]);
-                let extrinsic_id = log.data.get("extrinsic_id")
-                    .expect("extrinsic_id should be loaded").as_str().unwrap();
-                extrinsics_info.insert(extrinsic_id.clone(), fields);
-            }
-        }
-        for event in contracts_events {
-            let selection = &contracts_events_selections[event.selection_index as usize];
-            let mut fields = selection.data.event.extrinsic.selected_fields();
-            if !fields.is_empty() {
-                fields.extend_from_slice(&["id".to_string(), "pos".to_string()]);
-                let extrinsic_id = event.data.get("extrinsic_id")
-                    .expect("extrinsic_id should be loaded").as_str().unwrap();
-                extrinsics_info.insert(extrinsic_id.clone(), fields);
-            }
-        }
-        let query = extrinsics_info.into_iter()
-            .map(|(key, value)| {
-                let build_object_fields = value
-                    .iter()
-                    .map(|field| format!("'{}', {}", &field, &field))
-                    .collect::<Vec<String>>()
-                    .join(", ");
-                format!("(SELECT block_id, jsonb_build_object({}) as data FROM extrinsic WHERE id = '{}')", &build_object_fields, &key)
-            })
-            .collect::<Vec<String>>()
-            .join(" UNION ");
+    async fn load_extrinsics(&self, ids: &Vec<String>) -> Result<Vec<Extrinsic>, Error> {
+        let query = "SELECT
+                id,
+                block_id,
+                index_in_block::int8,
+                version::int8,
+                signature,
+                success,
+                error,
+                call_id,
+                fee,
+                tip,
+                hash,
+                pos::int8
+            FROM extrinsic WHERE id = ANY($1)";
         let extrinsics = sqlx::query_as::<_, Extrinsic>(&query)
+            .bind(ids)
             .fetch_all(&self.pool)
             .observe_duration("extrinsic")
             .await?;
@@ -635,26 +657,40 @@ impl PostgresArchive {
                 }
             }
         }
-        let query = calls_info.into_iter()
-            .map(|(key, value)| {
-                let build_object_fields = value.fields
+
+        let mut groups: Vec<CallGroup> = Vec::new();
+        for (call_id, call_info) in calls_info.drain() {
+            if let Some(group) = groups.iter_mut().find(|group| group.call_info.fields == call_info.fields) {
+                group.ids.push(call_id.to_string());
+            } else {
+                let group = CallGroup { call_info, ids: vec![call_id.to_string()] };
+                groups.push(group);
+            }
+        }
+        let query = groups.into_iter()
+            .map(|group| {
+                let build_object_fields = group.call_info.fields
                     .iter()
                     .map(|field| format!("'{}', {}", &field, &field))
                     .collect::<Vec<String>>()
                     .join(", ");
-                if let Some(parent) = value.parent {
+                let ids = group.ids.iter()
+                    .map(|id| format!("'{}'", id))
+                    .collect::<Vec<String>>()
+                    .join(", ");
+                if let Some(parent) = group.call_info.parent {
                     let parent_build_object_fields = parent
                         .iter()
                         .map(|field| format!("'{}', call.{}", &field, &field))
                         .collect::<Vec<String>>()
                         .join(", ");
                     format!("(WITH RECURSIVE child_call AS (
-                        SELECT block_id, name, parent_id, jsonb_build_object({}) AS data FROM call WHERE id = '{}'
+                        SELECT block_id, name, parent_id, jsonb_build_object({}) AS data FROM call WHERE id IN ({})
                         UNION ALL
                         SELECT call.block_id, call.name, call.parent_id, jsonb_build_object({}) AS data FROM call JOIN child_call ON child_call.parent_id = call.id
-                    ) SELECT block_id, name, data FROM child_call)", &build_object_fields, &key, &parent_build_object_fields)
+                    ) SELECT block_id, name, data FROM child_call)", &build_object_fields, &ids, &parent_build_object_fields)
                 } else {
-                    format!("(SELECT block_id, name, jsonb_build_object({}) as data FROM call WHERE id = '{}')", &build_object_fields, &key)
+                    format!("(SELECT block_id, name, jsonb_build_object({}) as data FROM call WHERE id IN ({}))", &build_object_fields, &ids)
                 }
             })
             .collect::<Vec<String>>()
@@ -744,7 +780,7 @@ impl PostgresArchive {
         blocks: Vec<BlockHeader>,
         events: Vec<Event>,
         calls: Vec<Call>,
-        extrinsics: Vec<Extrinsic>,
+        mut extrinsics_by_block: HashMap<String, Vec<serde_json::Value>>,
         events_calls: Vec<Call>,
         evm_logs: Vec<EvmLog>,
         evm_logs_calls: Vec<Call>,
@@ -766,12 +802,6 @@ impl PostgresArchive {
             events_by_block.entry(event.block_id)
                 .or_insert_with(Vec::new)
                 .push(event.data);
-        }
-        let mut extrinsics_by_block = HashMap::new();
-        for extrinsic in extrinsics {
-            extrinsics_by_block.entry(extrinsic.block_id.clone())
-                .or_insert_with(Vec::new)
-                .push(extrinsic.data);
         }
         let mut calls_by_block = HashMap::new();
         for call in calls {

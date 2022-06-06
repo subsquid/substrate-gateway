@@ -7,6 +7,7 @@ use crate::metrics::ObserverExt;
 use std::collections::HashMap;
 use serde::ser::SerializeStruct;
 use sqlx::{Pool, Postgres};
+use rust_decimal::Decimal;
 use utils::{unify_and_merge, merge};
 
 mod utils;
@@ -42,8 +43,8 @@ struct Extrinsic {
     pub version: i64,
     pub signature: Option<serde_json::Value>,
     pub call_id: String,
-    pub fee: Option<i64>,
-    pub tip: Option<i64>,
+    pub fee: Option<Decimal>,
+    pub tip: Option<Decimal>,
     pub success: bool,
     pub error: Option<serde_json::Value>,
     pub pos: i64,
@@ -124,6 +125,48 @@ impl ArchiveService for PostgresArchive {
                                 extrinsic_fields.entry(extrinsic_id.to_string())
                                     .and_modify(|fields| fields.merge(&selection.data.event.extrinsic))
                                     .or_insert_with(|| selection.data.event.extrinsic.clone());
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        for event in &contracts_events {
+            if let Some(value) = event.data.get("extrinsic_id") {
+                if let Some(extrinsic_id) = value.as_str() {
+                    for selection in contracts_event_selections {
+                        if selection.r#match(event) {
+                            if selection.data.event.extrinsic.any() {
+                                extrinsic_fields.entry(extrinsic_id.to_string())
+                                    .and_modify(|fields| fields.merge(&selection.data.event.extrinsic))
+                                    .or_insert_with(|| selection.data.event.extrinsic.clone());
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        for log in &evm_logs {
+            if let Some(value) = log.data.get("extrinsic_id") {
+                if let Some(extrinsic_id) = value.as_str() {
+                    let selection = &evm_log_selections[log.selection_index as usize];
+                    if selection.data.event.extrinsic.any() {
+                        extrinsic_fields.entry(extrinsic_id.to_string())
+                            .and_modify(|fields| fields.merge(&selection.data.event.extrinsic))
+                            .or_insert_with(|| selection.data.event.extrinsic.clone());
+                    }
+                }
+            }
+        }
+        for call in &calls {
+            if let Some(value) = call.data.get("extrinsic_id") {
+                if let Some(extrinsic_id) = value.as_str() {
+                    for selection in call_selections {
+                        if selection.r#match(call) {
+                            if selection.data.extrinsic.any() {
+                                extrinsic_fields.entry(extrinsic_id.to_string())
+                                    .and_modify(|fields| fields.merge(&selection.data.extrinsic))
+                                    .or_insert_with(|| selection.data.extrinsic.clone());
                             }
                         }
                     }
@@ -387,7 +430,12 @@ impl PostgresArchive {
             .enumerate()
             .map(|(index, selection)| {
                 let mut selected_fields = selection.data.event.selected_fields();
-                selected_fields.extend_from_slice(&["id".to_string(), "pos".to_string(), "name".to_string()]);
+                selected_fields.extend_from_slice(&[
+                    "id".to_string(),
+                    "pos".to_string(),
+                    "name".to_string(),
+                    "contract".to_string(),
+                ]);
                 let build_object_fields = selected_fields
                     .iter()
                     .map(|field| format!("'{}', event.{}", &field, &field))

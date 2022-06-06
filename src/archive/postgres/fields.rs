@@ -1,7 +1,7 @@
 use crate::archive::fields::{ExtrinsicFields, CallFields};
 
 impl CallFields {
-    pub fn merge(&mut self, fields: &CallFields) {
+    pub fn merge(&mut self, _fields: &CallFields) {
         
     }
 }

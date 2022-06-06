@@ -1,5 +1,5 @@
-use crate::entities::{Call, Event};
-use crate::archive::{CallSelection, EventSelection};
+use crate::entities::{Call, Event, ContractsEvent};
+use crate::archive::{CallSelection, EventSelection, ContractsEventSelection};
 
 const WILDCARD: &str = "*";
 
@@ -28,5 +28,17 @@ impl EventSelection {
 
     pub fn r#match(&self, event: &Event) -> bool {
         self.name == WILDCARD || self.name == event.name
+    }
+}
+
+
+impl ContractsEventSelection {
+    pub fn r#match(&self, event: &ContractsEvent) -> bool {
+        if let Some(value) = event.data.get("contract") {
+            if let Some(contract) = value.as_str() {
+                return contract.to_string() == self.contract
+            }
+        }
+        false
     }
 }

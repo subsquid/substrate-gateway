@@ -220,9 +220,10 @@ impl ArchiveService for PostgresArchive {
     async fn status(&self) -> Result<Status, Error> {
         let query = "SELECT height::int8 as head FROM block ORDER BY height DESC LIMIT 1";
         let status = sqlx::query_as::<_, Status>(query)
-            .fetch_one(&self.pool)
+            .fetch_optional(&self.pool)
             .observe_duration("block")
-            .await?;
+            .await?
+            .unwrap_or_else(|| Status { head: 0 });
         Ok(status)
     }
 }

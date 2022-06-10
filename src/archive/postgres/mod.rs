@@ -641,7 +641,9 @@ impl PostgresArchive {
                 spec_id,
                 validator
             FROM block
-            WHERE height >= $1 AND ($2 IS null OR height <= $2) LIMIT $3";
+            WHERE height >= $1 AND ($2 IS null OR height <= $2)
+            ORDER BY height
+            LIMIT $3";
         let blocks = sqlx::query_as::<_, BlockHeader>(&query)
             .bind(from_block)
             .bind(to_block)

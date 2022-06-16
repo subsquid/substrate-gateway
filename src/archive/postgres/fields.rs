@@ -1,4 +1,4 @@
-use crate::archive::fields::{ExtrinsicFields, CallFields};
+use crate::archive::fields::{ExtrinsicFields, CallFields, EventFields};
 
 impl CallFields {
     pub fn merge(&mut self, _fields: &CallFields) {
@@ -37,6 +37,32 @@ impl ExtrinsicFields {
         }
         if fields.tip {
             self.tip = true;
+        }
+    }
+}
+
+impl EventFields {
+    pub fn merge(&mut self, fields: &EventFields) {
+        if fields._all {
+            self._all = true;
+        }
+        if fields.index_in_block {
+            self.index_in_block = true;
+        }
+        if fields.phase {
+            self.phase = true;
+        }
+        if fields.extrinsic.any() {
+            self.extrinsic.merge(&fields.extrinsic);
+        }
+        if fields.call.any() {
+            self.call.merge(&fields.call);
+        }
+        if fields.name {
+            self.name = true;
+        }
+        if fields.args {
+            self.args = true;
         }
     }
 }

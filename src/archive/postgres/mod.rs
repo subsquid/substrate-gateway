@@ -1,6 +1,6 @@
 use super::ArchiveService;
 use super::selection::{CallSelection, EventSelection, EvmLogSelection, ContractsEventSelection};
-use super::fields::ExtrinsicFields;
+use super::fields::{ExtrinsicFields, EventFields};
 use crate::entities::{Batch, Metadata, Status, Call, Event, BlockHeader, EvmLog, ContractsEvent};
 use crate::error::Error;
 use crate::metrics::ObserverExt;
@@ -80,6 +80,32 @@ impl<'a> serde::Serialize for ExtrinsicSerializer<'a> {
     }
 }
 
+struct EventSerializer<'a> {
+    pub event: &'a Event,
+    pub fields: &'a EventFields,
+}
+
+impl<'a> serde::Serialize for EventSerializer<'a> {
+    fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        let fields = self.fields.selected_fields();
+        let mut state = serializer.serialize_struct("Event", fields.len() + 2)?;
+        state.serialize_field("id", &self.event.id)?;
+        state.serialize_field("pos", &self.event.pos)?;
+        state.serialize_field("name", &self.event.name)?;
+        for field in fields {
+            match field {
+                "index_in_block" => state.serialize_field("index_in_block", &self.event.index_in_block)?,
+                "phase" => state.serialize_field("phase", &self.event.phase)?,
+                "extrinsic_id" => state.serialize_field("extrinsic_id", &self.event.extrinsic_id)?,
+                "call_id" => state.serialize_field("call_id", &self.event.call_id)?,
+                "args" => state.serialize_field("args", &self.event.args)?,
+                _ => panic!("unexpected field"),
+            };
+        }
+        state.end()
+    }
+}
+
 pub struct PostgresArchive {
     pool: Pool<Postgres>,
 }
@@ -116,16 +142,20 @@ impl ArchiveService for PostgresArchive {
         };
 
         let mut extrinsic_fields: HashMap<String, ExtrinsicFields> = HashMap::new();
+        let mut event_fields: HashMap<String, EventFields> = HashMap::new();
+
         for event in &events {
-            if let Some(value) = event.data.get("extrinsic_id") {
-                if let Some(extrinsic_id) = value.as_str() {
-                    for selection in event_selections {
-                        if selection.r#match(event) {
-                            if selection.data.event.extrinsic.any() {
-                                extrinsic_fields.entry(extrinsic_id.to_string())
-                                    .and_modify(|fields| fields.merge(&selection.data.event.extrinsic))
-                                    .or_insert_with(|| selection.data.event.extrinsic.clone());
-                            }
+            for selection in event_selections {
+                if selection.r#match(event) {
+                    event_fields.entry(event.id.clone())
+                        .and_modify(|fields| fields.merge(&selection.data.event))
+                        .or_insert_with(|| selection.data.event.clone());
+
+                    if let Some(extrinsic_id) = &event.extrinsic_id {
+                        if selection.data.event.extrinsic.any() {
+                            extrinsic_fields.entry(extrinsic_id.clone())
+                                .and_modify(|fields| fields.merge(&selection.data.event.extrinsic))
+                                .or_insert_with(|| selection.data.event.extrinsic.clone());
                         }
                     }
                 }
@@ -192,7 +222,20 @@ impl ArchiveService for PostgresArchive {
         let evm_logs_calls = self.get_evm_logs_calls(&evm_log_selections, &evm_logs).await?;
         let contracts_events_calls = self.get_contracts_events_calls(
             &contracts_event_selections, &contracts_events).await?;
-        let batch = self.create_batch(blocks, events, calls, extrinsics_by_block, events_calls,
+
+        let mut events_by_block: HashMap<String, Vec<serde_json::Value>> = HashMap::new();
+        for event in events {
+            let fields = event_fields.get(&event.id).unwrap();
+            let serializer = EventSerializer { event: &event, fields };
+            let data = serde_json::to_value(serializer).unwrap();
+            if events_by_block.contains_key(&event.block_id) {
+                events_by_block.get_mut(&event.block_id).unwrap().push(data);
+            } else {
+                events_by_block.insert(event.block_id.clone(), vec![data]);
+            }
+        }
+
+        let batch = self.create_batch(blocks, events_by_block, calls, extrinsics_by_block, events_calls,
                                       evm_logs, evm_logs_calls, contracts_events, contracts_events_calls);
         Ok(batch)
     }
@@ -365,51 +408,44 @@ impl PostgresArchive {
         if event_selections.is_empty() {
             return Ok(Vec::new());
         }
-        let query_dynamic_part = event_selections.iter()
-            .map(|selection| {
-                let mut selected_fields = selection.data.event.selected_fields();
-                selected_fields.extend_from_slice(&["id".to_string(), "pos".to_string(), "name".to_string()]);
-                let build_object_fields = selected_fields
-                    .iter()
-                    .map(|field| format!("'{}', event.{}", &field, &field))
-                    .collect::<Vec<String>>()
-                    .join(", ");
-                let from_block = format!("{:010}", from_block);
-                let to_block = to_block.map_or("null".to_string(), |to_block| format!("{:010}", to_block + 1));
-                let name_condition = selection.condition();
-                format!("(
-                    SELECT
-                        event.block_id,
-                        json_agg(jsonb_build_object(
-                            'name', event.name,
-                            'data', jsonb_build_object({})
-                        )) as events
-                    FROM event
-                    WHERE {} AND event.block_id >= '{}' AND ({} IS null OR event.block_id < '{}')
-                    GROUP BY block_id
-                    ORDER BY block_id
-                    LIMIT {}
-                )", &build_object_fields, &name_condition, from_block, to_block, to_block, limit)
-            })
-            .collect::<Vec<String>>()
-            .join(" UNION ");
-        let query = format!("SELECT
+        let mut wildcard = false;
+        let mut names = Vec::new();
+        for selection in event_selections {
+            if selection.name == "*" {
+                wildcard = true;
+            } else {
+                names.push(format!("'{}'", &selection.name));
+            }
+        }
+        let name_condition = if wildcard {
+            "true".to_string()
+        } else {
+            format!("name IN ({})", names.join(", "))
+        };
+        let from_block = format!("{:010}", from_block);
+        let to_block = to_block.map_or("null".to_string(), |to_block| format!("{:010}", to_block + 1));
+        let subquery = format!("
+            SELECT DISTINCT block_id FROM event
+            WHERE {} AND block_id >= '{}' AND ({} is null OR block_id < '{}')
+            GROUP BY block_id
+            ORDER BY block_id
+            LIMIT {}
+        ", name_condition, from_block, to_block, to_block, limit);
+        let query = format!("
+            SELECT
+                id,
                 block_id,
-                json_array_elements(events) ->> 'name' AS name,
-                json_array_elements(events) -> 'data' AS data
-            FROM (
-                SELECT
-                    block_id,
-                    json_agg(event) AS events
-                FROM (
-                    SELECT
-                        block_id,
-                        json_array_elements(events) AS event
-                    FROM ({}) AS events_by_block
-                ) AS events
-                GROUP BY block_id
-                LIMIT {}
-            ) AS events_by_block", &query_dynamic_part, limit);
+                index_in_block::int8,
+                phase,
+                extrinsic_id,
+                call_id,
+                name,
+                args,
+                pos::int8,
+                contract
+            FROM event
+            WHERE {} AND block_id IN ({})
+        ", name_condition, subquery);
         let events = sqlx::query_as::<_, Event>(&query)
             .fetch_all(&self.pool)
             .observe_duration("event")
@@ -430,7 +466,10 @@ impl PostgresArchive {
         let query_dynamic_part = contracts_event_selections.iter()
             .enumerate()
             .map(|(index, selection)| {
-                let mut selected_fields = selection.data.event.selected_fields();
+                let mut selected_fields: Vec<String> = selection.data.event.selected_fields()
+                    .iter()
+                    .map(|field| field.to_string())
+                    .collect();
                 selected_fields.extend_from_slice(&[
                     "id".to_string(),
                     "pos".to_string(),
@@ -687,23 +726,21 @@ impl PostgresArchive {
             let selections = event_selections.iter()
                 .filter(|selection| selection.r#match(event));
             for selection in selections {
-                if let Some(value) = event.data.get("call_id") {
-                    if let Some(call_id) = value.as_str() {
-                        if selection.data.event.call.any() {
-                            let mut fields = selection.data.event.call.selected_fields();
+                if let Some(call_id) = &event.call_id {
+                    if selection.data.event.call.any() {
+                        let mut fields = selection.data.event.call.selected_fields();
+                        fields.extend_from_slice(&["id".to_string(), "pos".to_string(), "name".to_string()]);
+                        let parent = if selection.data.event.call.parent.any() {
+                            let mut fields = selection.data.event.call.parent.selected_fields();
                             fields.extend_from_slice(&["id".to_string(), "pos".to_string(), "name".to_string()]);
-                            let parent = if selection.data.event.call.parent.any() {
-                                let mut fields = selection.data.event.call.parent.selected_fields();
-                                fields.extend_from_slice(&["id".to_string(), "pos".to_string(), "name".to_string()]);
-                                Some(fields)
-                            } else {
-                                None
-                            };
-                            let info = CallInfo { fields, parent };
-                            calls_info.entry(call_id.clone())
-                                .and_modify(|call_info: &mut CallInfo| call_info.merge(&info))
-                                .or_insert(info);
-                        }
+                            Some(fields)
+                        } else {
+                            None
+                        };
+                        let info = CallInfo { fields, parent };
+                        calls_info.entry(call_id.clone())
+                            .and_modify(|call_info: &mut CallInfo| call_info.merge(&info))
+                            .or_insert(info);
                     }
                 }
             }
@@ -829,7 +866,7 @@ impl PostgresArchive {
     fn create_batch(
         &self,
         blocks: Vec<BlockHeader>,
-        events: Vec<Event>,
+        mut events_by_block: HashMap<String, Vec<serde_json::Value>>,
         calls: Vec<Call>,
         mut extrinsics_by_block: HashMap<String, Vec<serde_json::Value>>,
         events_calls: Vec<Call>,
@@ -838,12 +875,6 @@ impl PostgresArchive {
         contracts_events: Vec<ContractsEvent>,
         contracts_events_calls: Vec<Call>,
     ) -> Vec<Batch> {
-        let mut events_by_block = HashMap::new();
-        for event in events {
-            events_by_block.entry(event.block_id)
-                .or_insert_with(Vec::new)
-                .push(event.data);
-        }
         for log in evm_logs {
             events_by_block.entry(log.block_id)
                 .or_insert_with(Vec::new)

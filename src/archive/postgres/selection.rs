@@ -18,14 +18,6 @@ impl CallSelection {
 }
 
 impl EventSelection {
-    pub fn condition(&self) -> String {
-        if self.name == WILDCARD {
-            "true".to_string()
-        } else {
-            format!("event.name = '{}'", self.name)
-        }
-    }
-
     pub fn r#match(&self, event: &Event) -> bool {
         self.name == WILDCARD || self.name == event.name
     }

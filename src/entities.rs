@@ -17,9 +17,16 @@ pub struct BlockHeader {
 
 #[derive(sqlx::FromRow, Debug)]
 pub struct Event {
+    pub id: String,
     pub block_id: String,
+    pub index_in_block: i64,
+    pub phase: String,
+    pub extrinsic_id: Option<String>,
+    pub call_id: Option<String>,
     pub name: String,
-    pub data: serde_json::Value,
+    pub args: Option<serde_json::Value>,
+    pub pos: i64,
+    pub contract: Option<String>,
 }
 
 

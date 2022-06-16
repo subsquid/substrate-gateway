@@ -88,7 +88,7 @@ struct EventSerializer<'a> {
 impl<'a> serde::Serialize for EventSerializer<'a> {
     fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
         let fields = self.fields.selected_fields();
-        let mut state = serializer.serialize_struct("Event", fields.len() + 2)?;
+        let mut state = serializer.serialize_struct("Event", fields.len() + 3)?;
         state.serialize_field("id", &self.event.id)?;
         state.serialize_field("pos", &self.event.pos)?;
         state.serialize_field("name", &self.event.name)?;

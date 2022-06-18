@@ -7,23 +7,25 @@ mod common;
 async fn test_parent_call_loaded() {
     launch_gateway();
     let client = Client::new();
-    let batch = client.batch(json!({
-        "limit": 1,
-        "calls": [{
-            "name": "Balances.transfer",
-            "data": {
-                "call": {
-                    "parent": {"_all": true}
-                }
-            }
-        }]
-    })).await;
-    let requested_call = batch.calls.iter()
-        .find(|call| call.id == "0000650677-000003-0f08a-000001".to_string());
-    let parent_call = batch.calls.iter()
-        .find(|call| call.id == "0000650677-000003-0f08a".to_string());
-    assert!(requested_call.is_some());
-    assert!(parent_call.is_some());
+    let selections_data = [
+        json!({"_all": true}),
+        json!({"parent": {"_all": true}})
+    ];
+    for selection_data in selections_data {
+        let batch = client.batch(json!({
+            "limit": 1,
+            "calls": [{
+                "name": "Balances.transfer",
+                "data": {"call": selection_data},
+            }]
+        })).await;
+        let requested_call = batch.calls.iter()
+            .find(|call| call.id == "0000650677-000003-0f08a-000001".to_string());
+        let parent_call = batch.calls.iter()
+            .find(|call| call.id == "0000650677-000003-0f08a".to_string());
+        assert!(requested_call.is_some());
+        assert!(parent_call.is_some());
+    }
 }
 
 #[actix_web::test]

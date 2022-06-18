@@ -21,14 +21,15 @@ pub struct ParentCallFieldsInput {
 
 impl ParentCallFields {
     pub fn from(fields: ParentCallFieldsInput) -> Self {
+        let _all = fields._all.unwrap_or(false);
         ParentCallFields {
-            _all: fields._all.unwrap_or(false),
-            name: fields.name.unwrap_or(false),
-            args: fields.args.unwrap_or(false),
-            success: fields.success.unwrap_or(false),
-            error: fields.error.unwrap_or(false),
-            origin: fields.origin.unwrap_or(false),
-            parent: fields.parent.unwrap_or(false),
+            _all,
+            name: _all || fields.name.unwrap_or(false),
+            args: _all || fields.args.unwrap_or(false),
+            success: _all || fields.success.unwrap_or(false),
+            error: _all || fields.error.unwrap_or(false),
+            origin: _all || fields.origin.unwrap_or(false),
+            parent: _all || fields.parent.unwrap_or(false),
         }
     }
 }
@@ -50,15 +51,16 @@ pub struct CallFieldsInput {
 
 impl CallFields {
     pub fn from(fields: CallFieldsInput) -> Self {
+        let _all = fields._all.unwrap_or(false);
         CallFields {
-            _all: fields._all.unwrap_or(false),
-            success: fields.success.unwrap_or(false),
-            error: fields.error.unwrap_or(false),
-            origin: fields.origin.unwrap_or(false),
-            name: fields.name.unwrap_or(false),
-            args: fields.args.unwrap_or(false),
+            _all,
+            success: _all || fields.success.unwrap_or(false),
+            error: _all || fields.error.unwrap_or(false),
+            origin: _all || fields.origin.unwrap_or(false),
+            name: _all || fields.name.unwrap_or(false),
+            args: _all || fields.args.unwrap_or(false),
             parent: fields.parent.map_or_else(|| {
-                ParentCallFields::new(false)
+                ParentCallFields::new(_all || false)
             }, |parent| {
                 ParentCallFields::from(parent)
             })

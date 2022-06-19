@@ -52,6 +52,27 @@ async fn test_parent_call_skipped() {
 }
 
 #[actix_web::test]
+async fn test_event_loads_related_call() {
+    launch_gateway();
+    let client = Client::new();
+    let selections = [
+        json!({"name": "Contracts.ContractEmitted"}),
+        json!({
+            "name": "Contracts.ContractEmitted",
+            "data": {"event": {"_all": true}},
+        }),
+    ];
+    for selection in selections {
+        let batch = client.batch(json!({
+            "limit": 1,
+            "events": json!([selection])
+        })).await;
+        let call = &batch.calls[0];
+        assert!(call.id == "0000000734-000001-251d1".to_string());
+    }
+}
+
+#[actix_web::test]
 async fn test_evm_log_has_tx_hash() {
     launch_gateway();
     let client = Client::new();

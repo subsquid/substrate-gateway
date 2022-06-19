@@ -88,21 +88,22 @@ pub struct ExtrinsicFieldsInput {
 
 impl ExtrinsicFields {
     pub fn from(fields: ExtrinsicFieldsInput) -> Self {
+        let _all = fields._all.unwrap_or(false);
         ExtrinsicFields {
-            _all: fields._all.unwrap_or(false),
-            index_in_block: fields.index_in_block.unwrap_or(false),
-            version: fields.version.unwrap_or(false),
-            signature: fields.signature.unwrap_or(false),
-            success: fields.success.unwrap_or(false),
-            error: fields.error.unwrap_or(false),
-            hash: fields.hash.unwrap_or(false),
+            _all,
+            index_in_block: _all || fields.index_in_block.unwrap_or(false),
+            version: _all || fields.version.unwrap_or(false),
+            signature: _all || fields.signature.unwrap_or(false),
+            success: _all || fields.success.unwrap_or(false),
+            error: _all || fields.error.unwrap_or(false),
+            hash: _all || fields.hash.unwrap_or(false),
             call: fields.call.map_or_else(|| {
-                CallFields::new(false)
+                CallFields::new(_all || false)
             }, |call| {
                 CallFields::from(call)
             }),
-            fee: fields.fee.unwrap_or(false),
-            tip: fields.tip.unwrap_or(false),
+            fee: _all || fields.fee.unwrap_or(false),
+            tip: _all || fields.tip.unwrap_or(false),
         }
     }
 }
@@ -124,22 +125,23 @@ pub struct EventFieldsInput {
 
 impl EventFields {
     pub fn from(fields: EventFieldsInput) -> Self {
+        let _all = fields._all.unwrap_or(false);
         EventFields {
-            _all: fields._all.unwrap_or(false),
-            index_in_block: fields.index_in_block.unwrap_or(false),
-            phase: fields.phase.unwrap_or(false),
+            _all,
+            index_in_block: _all || fields.index_in_block.unwrap_or(false),
+            phase: _all || fields.phase.unwrap_or(false),
             extrinsic: fields.extrinsic.map_or_else(|| {
-                ExtrinsicFields::new(false)
+                ExtrinsicFields::new(_all || false)
             }, |extrinsic| {
                 ExtrinsicFields::from(extrinsic)
             }),
             call: fields.call.map_or_else(|| {
-                CallFields::new(false)
+                CallFields::new(_all || false)
             }, |call| {
                 CallFields::from(call)
             }),
-            name: fields.name.unwrap_or(false),
-            args: fields.args.unwrap_or(false),
+            name: _all || fields.name.unwrap_or(false),
+            args: _all || fields.args.unwrap_or(false),
         }
     }
 }
@@ -162,23 +164,24 @@ pub struct EvmLogFieldsInput {
 
 impl EvmLogFields {
     pub fn from(fields: EvmLogFieldsInput) -> Self {
+        let _all = fields._all.unwrap_or(false);
         EvmLogFields {
-            _all: fields._all.unwrap_or(false),
-            index_in_block: fields.index_in_block.unwrap_or(false),
-            phase: fields.phase.unwrap_or(false),
+            _all,
+            index_in_block: _all || fields.index_in_block.unwrap_or(false),
+            phase: _all || fields.phase.unwrap_or(false),
             extrinsic: fields.extrinsic.map_or_else(|| {
-                ExtrinsicFields::new(false)
+                ExtrinsicFields::new(_all || false)
             }, |extrinsic| {
                 ExtrinsicFields::from(extrinsic)
             }),
             call: fields.call.map_or_else(|| {
-                CallFields::new(false)
+                CallFields::new(_all || false)
             }, |call| {
                 CallFields::from(call)
             }),
-            name: fields.name.unwrap_or(false),
-            args: fields.args.unwrap_or(false),
-            evm_tx_hash: fields.evm_tx_hash.unwrap_or(false),
+            name: _all || fields.name.unwrap_or(false),
+            args: _all || fields.args.unwrap_or(false),
+            evm_tx_hash: _all || fields.evm_tx_hash.unwrap_or(false),
         }
     }
 }

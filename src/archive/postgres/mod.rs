@@ -387,8 +387,10 @@ impl PostgresArchive {
                         block_id,
                         json_array_elements(calls) AS call
                     FROM ({}) AS calls_by_block
+                    ORDER BY block_id
                 ) AS calls
                 GROUP BY block_id
+                ORDER BY block_id
                 LIMIT {}
             ) AS calls", &query_dynamic_part, limit);
         let calls = sqlx::query_as::<_, Call>(&query)

@@ -199,8 +199,6 @@ impl ArchiveService for PostgresArchive {
                 } else {
                     calls_by_block.insert(call.block_id.clone(), vec![data]);
                 }
-            } else {
-                println!("doesn't have a serialization context");
             }
         }
         let batch = self.create_batch(blocks, events_by_block, calls_by_block, extrinsics_by_block, events_calls,
@@ -387,6 +385,11 @@ impl PostgresArchive {
                     .join(", ");
                 let from_block = format!("{:010}", from_block);
                 let to_block = to_block.map_or("null".to_string(), |to_block| format!("{:010}", to_block + 1));
+                let contract_condition = if selection.contract == "*" {
+                    "event.contract IS NOT null".to_string()
+                } else {
+                    format!("event.contract = '{}'", &selection.contract)
+                };
                 format!("(
                     SELECT
                         event.block_id,
@@ -395,11 +398,11 @@ impl PostgresArchive {
                             'data', jsonb_build_object({})
                         )) as events
                     FROM event
-                    WHERE event.contract = '{}' AND event.block_id >= '{}' AND ({} IS null OR event.block_id < '{}')
+                    WHERE {} AND event.block_id >= '{}' AND ({} IS null OR event.block_id < '{}')
                     GROUP BY block_id
                     ORDER BY block_id
                     LIMIT {}
-                )", index, &build_object_fields, &selection.contract, from_block, to_block, to_block, limit)
+                )", index, &build_object_fields, &contract_condition, from_block, to_block, to_block, limit)
             })
             .collect::<Vec<String>>()
             .join(" UNION ");
@@ -455,10 +458,14 @@ impl PostgresArchive {
                 let from_block = format!("{:010}", from_block);
                 let to_block = to_block.map_or("null".to_string(), |to_block| format!("{:010}", to_block + 1));
                 let mut filters = vec![
-                    format!("event.contract = '{}'", &selection.contract),
                     format!("event.block_id >= '{}'", from_block),
                     format!("({} IS null OR event.block_id < '{}')", to_block, to_block),
                 ];
+                if selection.contract == "*" {
+                    filters.push("event.contract IS NOT null".to_string());
+                } else {
+                    filters.push(format!("event.contract = '{}'", &selection.contract));
+                }
                 let topics_filters: Vec<String> = selection.filter.iter()
                     .enumerate()
                     .filter_map(|(index, topics)| {

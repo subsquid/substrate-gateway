@@ -90,7 +90,7 @@ async fn test_evm_log_has_tx_hash() {
     })).await;
     let log = &batch.events[0];
     assert!(log.id == "0000569006-000084-5e412".to_string());
-    assert!(log.evmTxHash.clone().unwrap() == "0x8eafe131eee90e0dfb07d6df46b1aea737834936968da31f807af566a59148b9".to_string());
+    assert!(log.evmTxHash == Some("0x8eafe131eee90e0dfb07d6df46b1aea737834936968da31f807af566a59148b9".to_string()));
 }
 
 #[actix_web::test]
@@ -123,8 +123,34 @@ async fn test_wildcard_search() {
     })).await;
     let event = &batch.events[0];
     assert!(event.id == "0000000734-000004-251d1".to_string());
-    assert!(event.name.as_ref().unwrap() == &"Contracts.ContractEmitted".to_string());
+    assert!(event.name == Some("Contracts.ContractEmitted".to_string()));
     let call = &batch.calls[0];
     assert!(call.id == "0000000734-000001-251d1".to_string());
-    assert!(call.name.as_ref().unwrap() == &"Contracts.call".to_string());
+    assert!(call.name == Some("Contracts.call".to_string()));
+}
+
+#[actix_web::test]
+async fn test_contracts_wildcard_search() {
+    launch_gateway();
+    let client = Client::new();
+    let batch = client.batch(json!({
+        "limit": 1,
+        "contractsEvents": [{"contract": "*"}],
+    })).await;
+    let event = &batch.events[0];
+    assert!(event.id == "0000000734-000004-251d1".to_string());
+    assert!(event.name == Some("Contracts.ContractEmitted".to_string()));
+}
+
+#[actix_web::test]
+async fn test_evm_wildcard_search() {
+    launch_gateway();
+    let client = Client::new();
+    let batch = client.batch(json!({
+        "limit": 1,
+        "evmLogs": [{"contract": "*"}],
+    })).await;
+    let event = &batch.events[0];
+    assert!(event.id == "0000569006-000084-5e412".to_string());
+    assert!(event.name == Some("EVM.Log".to_string()));
 }

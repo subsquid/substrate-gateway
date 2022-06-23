@@ -97,31 +97,31 @@ impl CallFields {
         self.parent.any()
     }
 
-    pub fn selected_fields(&self) -> Vec<String> {
+    pub fn selected_fields(&self) -> Vec<&str> {
         let mut fields = vec![];
         if self._all {
             fields.extend_from_slice(&[
-                "success".to_string(),
-                "error".to_string(),
-                "origin".to_string(),
-                "args".to_string(),
-                "parent_id".to_string(),
+                "success",
+                "error",
+                "origin",
+                "args",
+                "parent_id",
             ]);
         } else {
             if self.success {
-                fields.push("success".to_string());
+                fields.push("success");
             }
             if self.error {
-                fields.push("error".to_string());
+                fields.push("error");
             }
             if self.origin {
-                fields.push("origin".to_string());
+                fields.push("origin");
             }
             if self.args {
-                fields.push("args".to_string());
+                fields.push("args");
             }
             if self.parent.any() {
-                fields.push("parent_id".to_string());
+                fields.push("parent_id");
             }
         }
         fields

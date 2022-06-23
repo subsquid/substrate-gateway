@@ -16,7 +16,7 @@ impl EventDataSelection {
 }
 
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct CallDataSelection {
     pub call: CallFields,
     pub extrinsic: ExtrinsicFields,
@@ -31,10 +31,10 @@ impl CallDataSelection {
         }
     }
 
-    pub fn selected_fields(&self) -> Vec<String> {
+    pub fn selected_fields(&self) -> Vec<&str> {
         let mut fields = self.call.selected_fields();
         if self.extrinsic.any() {
-            fields.push("extrinsic_id".to_string());
+            fields.push("extrinsic_id");
         }
         fields
     }

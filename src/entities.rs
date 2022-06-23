@@ -39,6 +39,21 @@ pub struct Call {
 
 
 #[derive(sqlx::FromRow, Debug)]
+pub struct FullCall {
+    pub id: String,
+    pub parent_id: Option<String>,
+    pub block_id: String,
+    pub extrinsic_id: String,
+    pub name: String,
+    pub args: Option<serde_json::Value>,
+    pub success: bool,
+    pub error: Option<serde_json::Value>,
+    pub origin: Option<serde_json::Value>,
+    pub pos: i64,
+}
+
+
+#[derive(sqlx::FromRow, Debug)]
 pub struct Extrinsic {
     pub block_id: String,
     pub data: serde_json::Value,

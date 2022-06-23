@@ -1,18 +1,10 @@
-use crate::entities::{Call, Event, ContractsEvent};
+use crate::entities::{FullCall, Event, ContractsEvent};
 use crate::archive::{CallSelection, EventSelection, ContractsEventSelection};
 
 const WILDCARD: &str = "*";
 
 impl CallSelection {
-    pub fn condition(&self) -> String {
-        if self.name == WILDCARD {
-            "true".to_string()
-        } else {
-            format!("call.name = '{}'", self.name)
-        }
-    }
-
-    pub fn r#match(&self, call: &Call) -> bool {
+    pub fn r#match(&self, call: &FullCall) -> bool {
         self.name == WILDCARD || self.name == call.name
     }
 }

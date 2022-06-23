@@ -1,8 +1,60 @@
-use crate::archive::fields::{ExtrinsicFields, CallFields, EventFields};
+use crate::archive::fields::{ExtrinsicFields, CallFields, ParentCallFields, EventFields};
+
+impl ParentCallFields {
+    pub fn merge(&mut self, fields: &ParentCallFields) {
+        if fields._all {
+            self._all = true;
+        }
+        if fields.args {
+            self.args = true;
+        }
+        if fields.success {
+            self.success = true;
+        }
+        if fields.error {
+            self.error = true;
+        }
+        if fields.origin {
+            self.origin = true;
+        }
+        if fields.parent {
+            self.parent = true;
+        }
+    }
+}
 
 impl CallFields {
-    pub fn merge(&mut self, _fields: &CallFields) {
-        
+    pub fn merge(&mut self, fields: &CallFields) {
+        if fields._all {
+            self._all = true;
+        }
+        if fields.success {
+            self.success = true;
+        }
+        if fields.error {
+            self.error = true;
+        }
+        if fields.origin {
+            self.origin = true;
+        }
+        if fields.args {
+            self.args = true;
+        }
+        if fields.parent.any() {
+            self.parent.merge(&fields.parent);
+        }
+    }
+
+    pub fn from_parent(fields: &ParentCallFields) -> CallFields {
+        CallFields {
+            _all: fields._all,
+            success: fields.success,
+            error: fields.error,
+            origin: fields.origin,
+            name: fields.name,
+            args: fields.args,
+            parent: fields.clone(),
+        }
     }
 }
 

@@ -53,7 +53,7 @@ impl ArchiveService for PostgresArchive {
         include_all_blocks: bool
     ) -> Result<Vec<Batch>, Error> {
         let mut calls = self.load_calls(limit, from_block, to_block, &call_selections).await?;
-        let mut events = self.get_events(limit, from_block, to_block, &event_selections).await?;
+        let mut events = self.load_events(limit, from_block, to_block, &event_selections).await?;
         let mut evm_logs = self.get_evm_logs(limit, from_block, to_block, &evm_log_selections).await?;
         let mut contracts_events = self.get_contracts_events(limit, from_block, to_block,
                                                              &contracts_event_selections).await?;
@@ -304,7 +304,7 @@ impl PostgresArchive {
         Ok(calls)
     }
 
-    async fn get_events(
+    async fn load_events(
         &self,
         limit: i32,
         from_block: i32,
@@ -320,25 +320,12 @@ impl PostgresArchive {
             if selection.name == "*" {
                 wildcard = true;
             } else {
-                names.push(format!("'{}'", &selection.name));
+                names.push(selection.name.clone());
             }
         }
-        let name_condition = if wildcard {
-            "true".to_string()
-        } else {
-            format!("name IN ({})", names.join(", "))
-        };
         let from_block = format!("{:010}", from_block);
         let to_block = to_block.map_or("null".to_string(), |to_block| format!("{:010}", to_block + 1));
-        let subquery = format!("
-            SELECT DISTINCT block_id FROM event
-            WHERE {} AND block_id >= '{}' AND ({} is null OR block_id < '{}')
-            GROUP BY block_id
-            ORDER BY block_id
-            LIMIT {}
-        ", name_condition, from_block, to_block, to_block, limit);
-        let query = format!("
-            SELECT
+        let query = "SELECT
                 id,
                 block_id,
                 index_in_block::int8,
@@ -350,9 +337,20 @@ impl PostgresArchive {
                 pos::int8,
                 contract
             FROM event
-            WHERE {} AND block_id IN ({})
-        ", name_condition, subquery);
+            WHERE ($1 OR name = ANY($2)) AND block_id IN (
+                SELECT DISTINCT block_id FROM event
+                WHERE ($1 OR name = ANY($2))
+                    AND block_id >= $3 AND ($4 IS null OR block_id < $4)
+                GROUP BY block_id
+                ORDER BY block_id
+                LIMIT $5
+            )";
         let events = sqlx::query_as::<_, Event>(&query)
+            .bind(wildcard)
+            .bind(names)
+            .bind(from_block)
+            .bind(to_block)
+            .bind(limit)
             .fetch_all(&self.pool)
             .observe_duration("event")
             .await?;

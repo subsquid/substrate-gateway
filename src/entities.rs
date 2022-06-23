@@ -1,6 +1,7 @@
 use async_graphql::SimpleObject;
 use chrono::{DateTime, Utc};
 use sqlx::FromRow;
+use rust_decimal::Decimal;
 
 
 #[derive(FromRow, SimpleObject, Debug)]
@@ -53,10 +54,20 @@ pub struct FullCall {
 }
 
 
-#[derive(sqlx::FromRow, Debug)]
+#[derive(sqlx::FromRow)]
 pub struct Extrinsic {
+    pub id: String,
     pub block_id: String,
-    pub data: serde_json::Value,
+    pub index_in_block: i64,
+    pub version: i64,
+    pub signature: Option<serde_json::Value>,
+    pub call_id: String,
+    pub fee: Option<Decimal>,
+    pub tip: Option<Decimal>,
+    pub success: bool,
+    pub error: Option<serde_json::Value>,
+    pub pos: i64,
+    pub hash: String
 }
 
 

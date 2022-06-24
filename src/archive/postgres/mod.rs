@@ -386,7 +386,7 @@ impl PostgresArchive {
                 let from_block = format!("{:010}", from_block);
                 let to_block = to_block.map_or("null".to_string(), |to_block| format!("{:010}", to_block + 1));
                 let contract_condition = if selection.contract == "*" {
-                    "event.contract IS NOT null".to_string()
+                    "event.name = 'Contracts.ContractEmitted'".to_string()
                 } else {
                     format!("event.contract = '{}'", &selection.contract)
                 };
@@ -457,15 +457,12 @@ impl PostgresArchive {
                 let build_object_fields = build_object_args.join(", ");
                 let from_block = format!("{:010}", from_block);
                 let to_block = to_block.map_or("null".to_string(), |to_block| format!("{:010}", to_block + 1));
-                let mut filters = vec![
-                    format!("event.block_id >= '{}'", from_block),
-                    format!("({} IS null OR event.block_id < '{}')", to_block, to_block),
-                ];
-                if selection.contract == "*" {
-                    filters.push("event.contract IS NOT null".to_string());
+                let contract_condition = if selection.contract == "*" {
+                    "event.name = 'EVM.Log'".to_string()
                 } else {
-                    filters.push(format!("event.contract = '{}'", &selection.contract));
-                }
+                    format!("event.contract = '{}'", &selection.contract)
+                };
+                let mut filters = vec![contract_condition];
                 let topics_filters: Vec<String> = selection.filter.iter()
                     .enumerate()
                     .filter_map(|(index, topics)| {
@@ -499,10 +496,15 @@ impl PostgresArchive {
                     INNER JOIN event executed_event
                         ON event.extrinsic_id = executed_event.extrinsic_id
                             AND executed_event.name = 'Ethereum.Executed'
-                    WHERE {}
+                    WHERE {} AND event.block_id IN (
+                        SELECT DISTINCT block_id FROM event
+                        WHERE {} AND block_id >= '{}' AND ({} IS NULL OR block_id < '{}')
+                        GROUP BY block_id
+                        ORDER BY block_id
+                        LIMIT {}
+                    )
                     GROUP BY event.block_id
-                    LIMIT {}
-                )", index, &build_object_fields, &conditions, limit)
+                )", index, &build_object_fields, &conditions, &conditions, from_block, to_block, to_block, limit)
             })
             .collect::<Vec<String>>()
             .join(" UNION ");

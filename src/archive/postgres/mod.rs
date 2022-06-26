@@ -137,23 +137,7 @@ impl ArchiveService for PostgresArchive {
                             );
                         }
                     }
-                    if let Some(parent_id) = &call.parent_id {
-                        if selection.data.call.parent.any() {
-                            // TODO: make this part recursively
-                            let parent = calls.iter().find(|call| &call.id == parent_id)
-                                .expect("parent call expected to be loaded");
-                            let parent_fields = CallDataSelection {
-                                call: CallFields::from_parent(&selection.data.call.parent),
-                                extrinsic: ExtrinsicFields::new(false),
-                            };
-                            if let Some(fields) = call_fields.get_mut(&parent.id) {
-                                fields.call.merge(&parent_fields.call);
-                                fields.extrinsic.merge(&parent_fields.extrinsic);
-                            } else {
-                                call_fields.insert(parent.id.clone(), parent_fields);
-                            }
-                        }
-                    }
+                    self.visit_parent_call(&call, &selection.data, &calls, &mut call_fields);
                 }
             }
         }
@@ -840,5 +824,31 @@ impl PostgresArchive {
                 }
             })
             .collect()
+    }
+
+    fn visit_parent_call(
+        &self,
+        call: &FullCall,
+        data: &CallDataSelection,
+        calls: &Vec<FullCall>,
+        call_fields: &mut HashMap<String, CallDataSelection>,
+    ) {
+        if let Some(parent_id) = &call.parent_id {
+            if data.call.parent.any() {
+                let parent = calls.iter().find(|call| &call.id == parent_id)
+                    .expect("parent call expected to be loaded");
+                let parent_fields = CallDataSelection {
+                    call: CallFields::from_parent(&data.call.parent),
+                    extrinsic: ExtrinsicFields::new(false),
+                };
+                self.visit_parent_call(&parent, &parent_fields, calls, call_fields);
+                if let Some(fields) = call_fields.get_mut(&parent.id) {
+                    fields.call.merge(&parent_fields.call);
+                    fields.extrinsic.merge(&parent_fields.extrinsic);
+                } else {
+                    call_fields.insert(parent.id.clone(), parent_fields);
+                }
+            }
+        }
     }
 }

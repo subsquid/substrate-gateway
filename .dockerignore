@@ -1,5 +1,6 @@
 /target
 /tests
+/scripts
+/.github
 .env
 .env.example
-run-tests.sh

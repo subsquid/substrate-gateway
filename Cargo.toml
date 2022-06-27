@@ -1,6 +1,6 @@
 [package]
 name = "archive-gateway"
-version = "0.1.0"
+version = "1.0.0"
 description = "Graphql server for subsquid archive"
 edition = "2021"
 
@@ -11,7 +11,7 @@ async-graphql = { version = "4.0.3", features = [ "chrono" ] }
 async-graphql-actix-web = "4.0.3"
 async-trait = "0.1.52"
 actix-web = { version = "4.1.0", default-features = false, features = [ "macros" ] }
-sqlx = { version = "0.5.13", features = [ "runtime-actix-native-tls", "postgres", "macros", "chrono", "json", "decimal" ] }
+sqlx = { version = "0.5.13", features = [ "runtime-actix-rustls", "postgres", "macros", "chrono", "json", "decimal" ] }
 rust_decimal = "1.25.0"
 chrono = "0.4"
 serde = "1.0"

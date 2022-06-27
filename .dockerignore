@@ -1,6 +1,5 @@
 /target
 /tests
-/scripts
 /.github
 .env
 .env.example

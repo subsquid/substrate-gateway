@@ -41,17 +41,26 @@ pub struct PostgresArchive {
 
 #[async_trait::async_trait]
 impl ArchiveService for PostgresArchive {
+    type EvmLogSelection = EvmLogSelection;
+    type ContractsEventSelection = ContractsEventSelection;
+    type EventSelection = EventSelection;
+    type CallSelection = CallSelection;
+    type Batch = Batch;
+    type Metadata = Metadata;
+    type Status = Status;
+    type Error = Error;
+
     async fn batch(
         &self,
         limit: i32,
         from_block: i32,
         to_block: Option<i32>,
-        evm_log_selections: &Vec<EvmLogSelection>,
-        contracts_event_selections: &Vec<ContractsEventSelection>,
-        event_selections: &Vec<EventSelection>,
-        call_selections: &Vec<CallSelection>,
+        evm_log_selections: &Vec<Self::EvmLogSelection>,
+        contracts_event_selections: &Vec<Self::ContractsEventSelection>,
+        event_selections: &Vec<Self::EventSelection>,
+        call_selections: &Vec<Self::CallSelection>,
         include_all_blocks: bool
-    ) -> Result<Vec<Batch>, Error> {
+    ) -> Result<Vec<Self::Batch>, Self::Error> {
         let mut calls = self.load_calls(limit, from_block, to_block, &call_selections).await?;
         let mut events = self.load_events(limit, from_block, to_block, &event_selections).await?;
         let mut evm_logs = self.get_evm_logs(limit, from_block, to_block, &evm_log_selections).await?;
@@ -190,7 +199,7 @@ impl ArchiveService for PostgresArchive {
         Ok(batch)
     }
 
-    async fn metadata(&self) -> Result<Vec<Metadata>, Error> {
+    async fn metadata(&self) -> Result<Vec<Self::Metadata>, Self::Error> {
         let query = "SELECT id, spec_name, spec_version::int8, block_height::int8, block_hash, hex FROM metadata";
         let metadata = sqlx::query_as::<_, Metadata>(query)
             .fetch_all(&self.pool)
@@ -199,7 +208,7 @@ impl ArchiveService for PostgresArchive {
         Ok(metadata)
     }
 
-    async fn metadata_by_id(&self, id: String) -> Result<Option<Metadata>, Error> {
+    async fn metadata_by_id(&self, id: String) -> Result<Option<Self::Metadata>, Self::Error> {
         let query = "SELECT id, spec_name, spec_version::int8, block_height::int8, block_hash, hex
             FROM metadata WHERE id = $1";
         let metadata = sqlx::query_as::<_, Metadata>(query)

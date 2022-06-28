@@ -2,6 +2,7 @@ use crate::archive::ArchiveService;
 use crate::archive::selection::{
     EventSelection, CallSelection, EvmLogSelection, ContractsEventSelection,
 };
+use crate::error::Error;
 use crate::entities::{Batch, Metadata, Status};
 use crate::metrics::DB_TIME_SPENT_SECONDS;
 use serde_json::{Map, Value};
@@ -51,7 +52,16 @@ fn batch_to_camel_case(batch: &mut Vec<Batch>) {
 }
 
 pub struct QueryRoot {
-    pub archive: Box<dyn ArchiveService + Send + Sync>,
+    pub archive: Box<dyn ArchiveService<
+        EvmLogSelection = EvmLogSelection,
+        ContractsEventSelection = ContractsEventSelection, 
+        EventSelection = EventSelection,
+        CallSelection = CallSelection,
+        Batch = Batch,
+        Metadata = Metadata,
+        Status = Status,
+        Error = Error,
+    > + Send + Sync>,
 }
 
 #[Object]

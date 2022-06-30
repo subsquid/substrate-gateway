@@ -200,7 +200,8 @@ impl ArchiveService for PostgresArchive {
     }
 
     async fn metadata(&self) -> Result<Vec<Self::Metadata>, Self::Error> {
-        let query = "SELECT id, spec_name, spec_version::int8, block_height::int8, block_hash, hex FROM metadata";
+        let query = "SELECT id, spec_name, spec_version::int8, block_height::int8, block_hash, hex
+            FROM metadata ORDER BY block_height";
         let metadata = sqlx::query_as::<_, Metadata>(query)
             .fetch_all(&self.pool)
             .observe_duration("metadata")

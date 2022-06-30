@@ -33,6 +33,7 @@ async fn main() -> std::io::Result<()> {
 
     let pool = PgPoolOptions::new()
         .max_connections(args.database_max_connections)
+        .idle_timeout(Duration::from_secs(10))
         .connect_timeout(Duration::from_secs(5))
         .connect_lazy(&args.database_url)
         .unwrap();

@@ -9,7 +9,7 @@ use actix_web::web::{Data, resource};
 use actix_web::http::header::ContentType;
 use actix_web::dev::Service;
 use prometheus::{TextEncoder, Encoder};
-use tracing::error;
+use tracing::{error, debug};
 use middleware::{Logger, BindRequestId, RequestId};
 
 mod middleware;
@@ -27,11 +27,12 @@ async fn graphql_request(
 ) -> GraphQLResponse {
     let extensions = req.extensions();
     let request_id = extensions.get::<RequestId>().expect("RequestId wasn't set").0.as_str();
+    let x_squid_processor = req.headers()
+        .get("X-SQUID-PROCESSOR")
+        .and_then(|value| value.to_str().ok());
+    debug!(x_squid_processor, request_id, query = gql_req.0.query.as_str());
     let response = schema.execute(gql_req.into_inner()).await;
     if response.is_err() {
-        let x_squid_processor = req.headers()
-            .get("X-SQUID-PROCESSOR")
-            .and_then(|value| value.to_str().ok());
         for error in &response.errors {
             error!(x_squid_processor, request_id, message = error.message.as_str());
         }

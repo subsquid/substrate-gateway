@@ -434,7 +434,7 @@ impl PostgresArchive {
         if evm_log_selections.is_empty() {
             return Ok(Vec::new());
         }
-        let subqueries = evm_log_selections.iter()
+        let query = evm_log_selections.iter()
             .enumerate()
             .map(|(index, selection)| {
                 let mut selected_fields = selection.data.event.selected_fields();
@@ -480,45 +480,22 @@ impl PostgresArchive {
                 format!("(
                     SELECT
                         event.block_id,
-                        json_agg(
-                            jsonb_build_object(
-                                'selection_index', {},
-                                'data', jsonb_build_object({})
-                            )
-                        ) AS logs
+                        {}::int2 AS selection_index,
+                        jsonb_build_object({}) AS data
                     FROM event
                     INNER JOIN event executed_event
                         ON event.extrinsic_id = executed_event.extrinsic_id
                             AND executed_event.name = 'Ethereum.Executed'
                     WHERE {} AND event.block_id IN (
                         SELECT DISTINCT block_id FROM event
-                        WHERE {} AND block_id >= '{}' AND ({} IS NULL OR block_id < '{}')
-                        GROUP BY block_id
+                        WHERE {} AND block_id > '{}' AND ({} IS NULL OR block_id < '{}')
                         ORDER BY block_id
                         LIMIT {}
                     )
-                    GROUP BY event.block_id
                 )", index, &build_object_fields, &conditions, &conditions, from_block, to_block, to_block, limit)
             })
             .collect::<Vec<String>>()
             .join(" UNION ");
-        let query = format!("SELECT
-                block_id,
-                (json_array_elements(logs) ->> 'selection_index')::INT2 AS selection_index,
-                json_array_elements(logs) -> 'data' AS data
-            FROM (
-                SELECT
-                    block_id,
-                    json_agg(log) AS logs
-                FROM (
-                    SELECT
-                        block_id,
-                        json_array_elements(logs) as log
-                    FROM ({}) AS logs
-                ) AS logs
-                GROUP BY block_id
-                LIMIT {}
-            ) AS logs_by_block", &subqueries, limit);
         let logs = sqlx::query_as::<_, EvmLog>(&query)
             .fetch_all(&self.pool)
             .observe_duration("event")
@@ -746,29 +723,43 @@ impl PostgresArchive {
         evm_log_selections: &Vec<EvmLogSelection>,
         evm_logs: &Vec<EvmLog>
     ) -> Result<Vec<Call>, Error> {
-        let mut calls_info = HashMap::new();
-        for log in evm_logs {
-            let selection = &evm_log_selections[log.selection_index as usize];
-            let mut fields: Vec<String> = selection.data.event.call.selected_fields()
-                .iter()
-                .map(|field| field.to_string())
-                .collect();
-            if !fields.is_empty() {
-                fields.extend_from_slice(&["id".to_string(), "pos".to_string(), "name".to_string()]);
-                let call_id = log.data.get("call_id")
-                    .expect("call_id should be loaded").as_str().unwrap();
-                calls_info.insert(call_id.clone(), fields);
-            }
-        }
-        // check intersection between already loaded calls
-        let query = calls_info.into_iter()
-            .map(|(key, value)| {
-                let build_object_fields = value
+        let query = evm_log_selections.iter()
+            .enumerate()
+            .filter_map(|(index, selection)| {
+                let mut fields = selection.data.event.call.selected_fields()
                     .iter()
-                    .map(|field| format!("'{}', {}", &field, &field))
-                    .collect::<Vec<String>>()
-                    .join(", ");
-                format!("(SELECT block_id, name, jsonb_build_object({}) as data FROM call WHERE id = '{}')", &build_object_fields, &key)
+                    .map(|field| field.to_string())
+                    .collect::<Vec<String>>();
+                if fields.is_empty() {
+                    None
+                } else {
+                    fields.extend_from_slice(&["id".to_string(), "pos".to_string(), "name".to_string()]);
+                    let mut ids = evm_logs.iter()
+                        .filter_map(|log| {
+                            if log.selection_index == index as i16 {
+                                let call_id = log.data.get("call_id")
+                                    .expect("call_id should be loaded").as_str().unwrap();
+                                Some(format!("'{}'", call_id))
+                            } else {
+                                None
+                            }
+                        })
+                        .collect::<Vec<String>>();
+                    if ids.is_empty() {
+                        return None
+                    }
+                    ids.dedup();
+                    let build_object_fields = fields
+                        .iter()
+                        .map(|field| format!("'{}', {}", &field, &field))
+                        .collect::<Vec<String>>()
+                        .join(", ");
+                    Some(format!(
+                        "(SELECT block_id, name, jsonb_build_object({}) AS data FROM call WHERE id IN ({}))",
+                        &build_object_fields, &ids.join(", ")
+                    ))
+                }
+
             })
             .collect::<Vec<String>>()
             .join(" UNION ");

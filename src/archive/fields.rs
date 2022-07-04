@@ -1,9 +1,7 @@
 #[derive(Debug, Clone)]
 pub struct ParentCallFields {
     pub _all: bool,
-    pub name: bool,
     pub args: bool,
-    pub success: bool,
     pub error: bool,
     pub origin: bool,
     pub parent: bool,
@@ -13,9 +11,7 @@ impl ParentCallFields {
     pub fn new(value: bool) -> Self {
         ParentCallFields {
             _all: value,
-            name: value,
             args: value,
-            success: value,
             error: value,
             origin: value,
             parent: value,
@@ -24,9 +20,7 @@ impl ParentCallFields {
 
     pub fn any(&self) -> bool {
         self._all ||
-        self.name ||
         self.args ||
-        self.success ||
         self.error ||
         self.origin ||
         self.parent
@@ -37,7 +31,6 @@ impl ParentCallFields {
         if self._all {
             fields.extend_from_slice(&[
                 "args".to_string(),
-                "success".to_string(),
                 "error".to_string(),
                 "origin".to_string(),
                 "parent_id".to_string(),
@@ -45,9 +38,6 @@ impl ParentCallFields {
         } else {
             if self.args {
                 fields.push("args".to_string());
-            }
-            if self.success {
-                fields.push("success".to_string());
             }
             if self.error {
                 fields.push("error".to_string());
@@ -66,10 +56,8 @@ impl ParentCallFields {
 #[derive(Debug, Clone)]
 pub struct CallFields {
     pub _all: bool,
-    pub success: bool,
     pub error: bool,
     pub origin: bool,
-    pub name: bool,
     pub args: bool,
     pub parent: ParentCallFields,
 }
@@ -78,10 +66,8 @@ impl CallFields {
     pub fn new(value: bool) -> Self {
         CallFields {
             _all: value,
-            success: value,
             error: value,
             origin: value,
-            name: value,
             args: value,
             parent: ParentCallFields::new(value),
         }
@@ -89,10 +75,8 @@ impl CallFields {
 
     pub fn any(&self) -> bool {
         self._all ||
-        self.success ||
         self.error ||
         self.origin ||
-        self.name ||
         self.args ||
         self.parent.any()
     }
@@ -101,16 +85,12 @@ impl CallFields {
         let mut fields = vec![];
         if self._all {
             fields.extend_from_slice(&[
-                "success",
                 "error",
                 "origin",
                 "args",
                 "parent_id",
             ]);
         } else {
-            if self.success {
-                fields.push("success");
-            }
             if self.error {
                 fields.push("error");
             }
@@ -225,7 +205,6 @@ pub struct EventFields {
     pub phase: bool,
     pub extrinsic: ExtrinsicFields,
     pub call: CallFields,
-    pub name: bool,
     pub args: bool,
 }
 
@@ -237,7 +216,6 @@ impl EventFields {
             phase: value,
             extrinsic: ExtrinsicFields::new(value),
             call: CallFields::new(value),
-            name: value,
             args: value,
         }
     }
@@ -280,7 +258,6 @@ pub struct EvmLogFields {
     pub phase: bool,
     pub extrinsic: ExtrinsicFields,
     pub call: CallFields,
-    pub name: bool,
     pub args: bool,
     pub evm_tx_hash: bool,
 }
@@ -293,7 +270,6 @@ impl EvmLogFields {
             phase: value,
             extrinsic: ExtrinsicFields::new(value),
             call: CallFields::new(value),
-            name: value,
             args: value,
             evm_tx_hash: value,
         }

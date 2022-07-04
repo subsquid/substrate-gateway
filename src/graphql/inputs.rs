@@ -10,9 +10,7 @@ use async_graphql::InputObject;
 pub struct ParentCallFieldsInput {
     #[graphql(name="_all")]
     pub _all: Option<bool>,
-    pub name: Option<bool>,
     pub args: Option<bool>,
-    pub success: Option<bool>,
     pub error: Option<bool>,
     pub origin: Option<bool>,
     pub parent: Option<bool>,
@@ -24,9 +22,7 @@ impl ParentCallFields {
         let _all = fields._all.unwrap_or(false);
         ParentCallFields {
             _all,
-            name: _all || fields.name.unwrap_or(false),
             args: _all || fields.args.unwrap_or(false),
-            success: _all || fields.success.unwrap_or(false),
             error: _all || fields.error.unwrap_or(false),
             origin: _all || fields.origin.unwrap_or(false),
             parent: _all || fields.parent.unwrap_or(false),
@@ -40,10 +36,8 @@ impl ParentCallFields {
 pub struct CallFieldsInput {
     #[graphql(name="_all")]
     pub _all: Option<bool>,
-    pub success: Option<bool>,
     pub error: Option<bool>,
     pub origin: Option<bool>,
-    pub name: Option<bool>,
     pub args: Option<bool>,
     pub parent: Option<ParentCallFieldsInput>,
 }
@@ -54,10 +48,8 @@ impl CallFields {
         let _all = fields._all.unwrap_or(false);
         CallFields {
             _all,
-            success: _all || fields.success.unwrap_or(false),
             error: _all || fields.error.unwrap_or(false),
             origin: _all || fields.origin.unwrap_or(false),
-            name: _all || fields.name.unwrap_or(false),
             args: _all || fields.args.unwrap_or(false),
             parent: fields.parent.map_or_else(|| {
                 ParentCallFields::new(_all || false)
@@ -118,7 +110,6 @@ pub struct EventFieldsInput {
     pub phase: Option<bool>,
     pub extrinsic: Option<ExtrinsicFieldsInput>,
     pub call: Option<CallFieldsInput>,
-    pub name: Option<bool>,
     pub args: Option<bool>,
 }
 
@@ -140,7 +131,6 @@ impl EventFields {
             }, |call| {
                 CallFields::from(call)
             }),
-            name: _all || fields.name.unwrap_or(false),
             args: _all || fields.args.unwrap_or(false),
         }
     }
@@ -156,7 +146,6 @@ pub struct EvmLogFieldsInput {
     pub phase: Option<bool>,
     pub extrinsic: Option<ExtrinsicFieldsInput>,
     pub call: Option<CallFieldsInput>,
-    pub name: Option<bool>,
     pub args: Option<bool>,
     pub evm_tx_hash: Option<bool>,
 }
@@ -179,7 +168,6 @@ impl EvmLogFields {
             }, |call| {
                 CallFields::from(call)
             }),
-            name: _all || fields.name.unwrap_or(false),
             args: _all || fields.args.unwrap_or(false),
             evm_tx_hash: _all || fields.evm_tx_hash.unwrap_or(false),
         }

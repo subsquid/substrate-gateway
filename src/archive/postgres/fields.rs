@@ -8,9 +8,6 @@ impl ParentCallFields {
         if fields.args {
             self.args = true;
         }
-        if fields.success {
-            self.success = true;
-        }
         if fields.error {
             self.error = true;
         }
@@ -27,9 +24,6 @@ impl CallFields {
     pub fn merge(&mut self, fields: &CallFields) {
         if fields._all {
             self._all = true;
-        }
-        if fields.success {
-            self.success = true;
         }
         if fields.error {
             self.error = true;
@@ -48,10 +42,8 @@ impl CallFields {
     pub fn from_parent(fields: &ParentCallFields) -> CallFields {
         CallFields {
             _all: fields._all,
-            success: fields.success,
             error: fields.error,
             origin: fields.origin,
-            name: fields.name,
             args: fields.args,
             parent: fields.clone(),
         }
@@ -109,9 +101,6 @@ impl EventFields {
         }
         if fields.call.any() {
             self.call.merge(&fields.call);
-        }
-        if fields.name {
-            self.name = true;
         }
         if fields.args {
             self.args = true;

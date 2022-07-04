@@ -66,13 +66,13 @@ pub struct CallSerializer<'a> {
 impl<'a> serde::Serialize for CallSerializer<'a> {
     fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
         let fields = self.fields.selected_fields();
-        let mut state = serializer.serialize_struct("Call", fields.len() + 3)?;
+        let mut state = serializer.serialize_struct("Call", fields.len() + 4)?;
         state.serialize_field("id", &self.call.id)?;
         state.serialize_field("pos", &self.call.pos)?;
         state.serialize_field("name", &self.call.name)?;
+        state.serialize_field("success", &self.call.success)?;
         for field in fields {
             match field {
-                "success" => state.serialize_field("success", &self.call.success)?,
                 "error" => state.serialize_field("error", &self.call.error)?,
                 "origin" => state.serialize_field("origin", &self.call.origin)?,
                 "args" => state.serialize_field("args", &self.call.args)?,

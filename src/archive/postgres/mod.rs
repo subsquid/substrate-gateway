@@ -616,10 +616,10 @@ impl PostgresArchive {
                             .iter()
                             .map(|field| field.to_string())
                             .collect();
-                        fields.extend_from_slice(&["id".to_string(), "pos".to_string(), "name".to_string()]);
+                        fields.extend_from_slice(&["id".to_string(), "pos".to_string(), "name".to_string(), "success".to_string()]);
                         let parent = if selection.data.event.call.parent.any() {
                             let mut fields = selection.data.event.call.parent.selected_fields();
-                            fields.extend_from_slice(&["id".to_string(), "pos".to_string(), "name".to_string()]);
+                            fields.extend_from_slice(&["id".to_string(), "pos".to_string(), "name".to_string(), "success".to_string()]);
                             Some(fields)
                         } else {
                             None
@@ -690,7 +690,7 @@ impl PostgresArchive {
                 .map(|field| field.to_string())
                 .collect();
             if !call_fields.is_empty() {
-                call_fields.extend_from_slice(&["id".to_string(), "pos".to_string(), "name".to_string()]);
+                call_fields.extend_from_slice(&["id".to_string(), "pos".to_string(), "name".to_string(), "success".to_string()]);
                 let call_id = event.data.get("call_id")
                     .expect("call_id should be loaded").as_str();
                 if let Some(call_id) = call_id {
@@ -733,7 +733,7 @@ impl PostgresArchive {
                 if fields.is_empty() {
                     None
                 } else {
-                    fields.extend_from_slice(&["id".to_string(), "pos".to_string(), "name".to_string()]);
+                    fields.extend_from_slice(&["id".to_string(), "pos".to_string(), "name".to_string(), "success".to_string()]);
                     let mut ids = evm_logs.iter()
                         .filter_map(|log| {
                             if log.selection_index == index as i16 {

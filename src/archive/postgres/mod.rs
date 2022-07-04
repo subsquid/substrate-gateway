@@ -226,7 +226,7 @@ impl ArchiveService for PostgresArchive {
             .fetch_optional(&self.pool)
             .observe_duration("block")
             .await?
-            .unwrap_or_else(|| Status { head: 0 });
+            .unwrap_or_else(|| Status { head: -1 });
         Ok(status)
     }
 }

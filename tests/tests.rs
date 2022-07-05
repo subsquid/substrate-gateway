@@ -94,6 +94,20 @@ async fn test_evm_log_has_tx_hash() {
 }
 
 #[actix_web::test]
+async fn test_ethereum_transactions() {
+    launch_gateway();
+    let client = Client::new();
+    let batch = client.batch(json!({
+        "limit": 1,
+        "ethereumTransactions": [{
+            "contract": "0xb654611f84a8dc429ba3cb4fda9fad236c505a1a"
+        }]
+    })).await;
+    let call = &batch.calls[0];
+    assert!(call.id == "0000569006-000018-5e412".to_string());
+}
+
+#[actix_web::test]
 async fn test_contracts_events() {
     launch_gateway();
     let client = Client::new();

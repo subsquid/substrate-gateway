@@ -1,6 +1,7 @@
 #[async_trait::async_trait]
 pub trait ArchiveService {
     type EvmLogSelection;
+    type EthTransactSelection;
     type ContractsEventSelection;
     type EventSelection;
     type CallSelection;
@@ -15,6 +16,7 @@ pub trait ArchiveService {
         from_block: i32,
         to_block: Option<i32>,
         evm_log_selections: &Vec<Self::EvmLogSelection>,
+        eth_transact_selections: &Vec<Self::EthTransactSelection>,
         contracts_event_selections: &Vec<Self::ContractsEventSelection>,
         event_selections: &Vec<Self::EventSelection>,
         call_selections: &Vec<Self::CallSelection>,

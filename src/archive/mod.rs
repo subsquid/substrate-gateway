@@ -1,4 +1,4 @@
-use selection::{EventSelection, CallSelection, ContractsEventSelection};
+use selection::{EventSelection, CallSelection, ContractsEventSelection, EthTransactSelection};
 pub use traits::*;
 
 pub mod selection;

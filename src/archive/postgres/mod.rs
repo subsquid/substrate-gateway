@@ -1,5 +1,8 @@
 use super::ArchiveService;
-use super::selection::{CallSelection, CallDataSelection, EventSelection, EvmLogSelection, ContractsEventSelection};
+use super::selection::{
+    CallSelection, CallDataSelection, EventSelection,
+    EvmLogSelection, ContractsEventSelection, EthTransactSelection
+};
 use super::fields::{ExtrinsicFields, EventFields, CallFields};
 use crate::entities::{Batch, Metadata, Status, Call, Event, BlockHeader, EvmLog, ContractsEvent, FullCall, Extrinsic};
 use crate::error::Error;
@@ -42,6 +45,7 @@ pub struct PostgresArchive {
 #[async_trait::async_trait]
 impl ArchiveService for PostgresArchive {
     type EvmLogSelection = EvmLogSelection;
+    type EthTransactSelection = EthTransactSelection;
     type ContractsEventSelection = ContractsEventSelection;
     type EventSelection = EventSelection;
     type CallSelection = CallSelection;
@@ -56,6 +60,7 @@ impl ArchiveService for PostgresArchive {
         from_block: i32,
         to_block: Option<i32>,
         evm_log_selections: &Vec<Self::EvmLogSelection>,
+        eth_transact_selections: &Vec<Self::EthTransactSelection>,
         contracts_event_selections: &Vec<Self::ContractsEventSelection>,
         event_selections: &Vec<Self::EventSelection>,
         call_selections: &Vec<Self::CallSelection>,
@@ -64,16 +69,21 @@ impl ArchiveService for PostgresArchive {
         let mut calls = self.load_calls(limit, from_block, to_block, &call_selections).await?;
         let mut events = self.load_events(limit, from_block, to_block, &event_selections).await?;
         let mut evm_logs = self.get_evm_logs(limit, from_block, to_block, &evm_log_selections).await?;
+        let mut eth_transactions = self.load_eth_transactions(limit, from_block, to_block,
+                                                              &eth_transact_selections).await?;
         let mut contracts_events = self.get_contracts_events(limit, from_block, to_block,
                                                              &contracts_event_selections).await?;
         let blocks = if include_all_blocks {
             let blocks = self.get_blocks(from_block, to_block, limit).await?;
             blocks
         } else {
-            let block_ids = self.get_block_ids(&calls, &events, &evm_logs, &contracts_events, limit);
+            let block_ids = self.get_block_ids(&calls, &events, &evm_logs, &eth_transactions,
+                                               &contracts_events, limit);
             calls = calls.into_iter().filter(|call| block_ids.contains(&call.block_id)).collect();
             events = events.into_iter().filter(|event| block_ids.contains(&event.block_id)).collect();
             evm_logs = evm_logs.into_iter().filter(|log| block_ids.contains(&log.block_id)).collect();
+            eth_transactions = eth_transactions.into_iter()
+                .filter(|transaction| block_ids.contains(&transaction.block_id)).collect();
             contracts_events = contracts_events.into_iter()
                 .filter(|event| block_ids.contains(&event.block_id)).collect();
             self.get_blocks_by_ids(&block_ids).await?
@@ -124,6 +134,29 @@ impl ArchiveService for PostgresArchive {
                             .and_modify(|fields| fields.merge(&selection.data.event.extrinsic))
                             .or_insert_with(|| selection.data.event.extrinsic.clone());
                     }
+                }
+            }
+        }
+        for call in &eth_transactions {
+            for selection in eth_transact_selections {
+                if selection.r#match(call) {
+                    if let Some(fields) = call_fields.get_mut(&call.id) {
+                        fields.call.merge(&selection.data.call);
+                        fields.extrinsic.merge(&selection.data.extrinsic);
+                    } else {
+                        call_fields.insert(call.id.clone(), selection.data.clone());
+                    }
+                    if selection.data.extrinsic.any() {
+                        if let Some(fields) = extrinsic_fields.get_mut(&call.extrinsic_id) {
+                            fields.merge(&selection.data.extrinsic);
+                        } else {
+                            extrinsic_fields.insert(
+                                call.extrinsic_id.clone(),
+                                selection.data.extrinsic.clone()
+                            );
+                        }
+                    }
+                    self.visit_parent_call(&call, &selection.data, &calls, &mut call_fields);
                 }
             }
         }
@@ -183,6 +216,7 @@ impl ArchiveService for PostgresArchive {
         }
 
         let mut calls_by_block: HashMap<String, Vec<serde_json::Value>> = HashMap::new();
+        calls.append(&mut eth_transactions);
         for call in calls {
             if let Some(fields) = call_fields.get(&call.id) {
                 let serializer = CallSerializer { call: &call, fields };
@@ -503,11 +537,63 @@ impl PostgresArchive {
         Ok(logs)
     }
 
+    async fn load_eth_transactions(
+        &self,
+        limit: i32,
+        from_block: i32,
+        to_block: Option<i32>,
+        eth_transact_selections: &Vec<EthTransactSelection>
+    ) -> Result<Vec<FullCall>, Error> {
+        if eth_transact_selections.is_empty() {
+            return Ok(Vec::new());
+        }
+        let from_block = format!("{:010}", from_block);
+        let to_block = to_block.map(|to_block| format!("{:010}", to_block + 1));
+        let contracts = eth_transact_selections.iter()
+            .map(|selection| selection.contract.clone())
+            .collect::<Vec<String>>();
+        let query = "WITH RECURSIVE recursive_call AS (
+                SELECT * FROM call WHERE contract = ANY($1) AND block_id IN (
+                    SELECT DISTINCT block_id FROM call
+                    WHERE contract = ANY($1)
+                        AND block_id > $2 AND ($3 IS null OR block_id < $3)
+                    ORDER BY block_id
+                    LIMIT $4
+                )
+                UNION ALL
+                SELECT DISTINCT ON (call.id) call.*
+                FROM call JOIN recursive_call ON recursive_call.parent_id = call.id
+            )
+            SELECT
+                id,
+                parent_id,
+                block_id,
+                extrinsic_id,
+                name,
+                args,
+                success,
+                error,
+                origin,
+                pos::int8
+            FROM recursive_call
+            ORDER BY block_id";
+        let transactions = sqlx::query_as::<_, FullCall>(&query)
+            .bind(contracts)
+            .bind(from_block)
+            .bind(to_block)
+            .bind(limit)
+            .fetch_all(&self.pool)
+            .observe_duration("call")
+            .await?;
+        Ok(transactions)
+    }
+
     fn get_block_ids(
         &self,
         calls: &Vec<FullCall>,
         events: &Vec<Event>,
         evm_logs: &Vec<EvmLog>,
+        eth_transactions: &Vec<FullCall>,
         contracts_events: &Vec<ContractsEvent>,
         limit: i32
     ) -> Vec<String> {
@@ -520,6 +606,9 @@ impl PostgresArchive {
         }
         for log in evm_logs {
             block_ids.push(log.block_id.clone());
+        }
+        for transaction in eth_transactions {
+            block_ids.push(transaction.block_id.clone());
         }
         for event in contracts_events {
             block_ids.push(event.block_id.clone());

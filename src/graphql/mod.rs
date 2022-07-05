@@ -1,6 +1,7 @@
 use crate::archive::ArchiveService;
 use crate::archive::selection::{
-    EventSelection, CallSelection, EvmLogSelection, ContractsEventSelection,
+    EventSelection, CallSelection, EvmLogSelection,
+    ContractsEventSelection, EthTransactSelection,
 };
 use crate::error::Error;
 use crate::entities::{Batch, Metadata, Status};
@@ -9,7 +10,7 @@ use serde_json::{Map, Value};
 use convert_case::{Casing, Case};
 use async_graphql::{Context, Object, Result};
 use inputs::{
-    EventSelectionInput, CallSelectionInput,
+    EventSelectionInput, CallSelectionInput, EthTransactSelectionInput,
     EvmLogSelectionInput, ContractsEventSelectionInput,
 };
 
@@ -54,7 +55,8 @@ fn batch_to_camel_case(batch: &mut Vec<Batch>) {
 pub struct QueryRoot {
     pub archive: Box<dyn ArchiveService<
         EvmLogSelection = EvmLogSelection,
-        ContractsEventSelection = ContractsEventSelection, 
+        EthTransactSelection = EthTransactSelection,
+        ContractsEventSelection = ContractsEventSelection,
         EventSelection = EventSelection,
         CallSelection = CallSelection,
         Batch = Batch,
@@ -74,6 +76,8 @@ impl QueryRoot {
         to_block: Option<i32>,
         #[graphql(name = "evmLogs", visible = "is_evm_supported")]
         evm_log_selections: Option<Vec<EvmLogSelectionInput>>,
+        #[graphql(name = "ethereumTransactions", visible = "is_evm_supported")]
+        eth_transact_selections: Option<Vec<EthTransactSelectionInput>>,
         #[graphql(name = "contractsEvents", visible = "is_contracts_supported")]
         contracts_event_selections: Option<Vec<ContractsEventSelectionInput>>,
         #[graphql(name = "events")]
@@ -82,33 +86,14 @@ impl QueryRoot {
         call_selections: Option<Vec<CallSelectionInput>>,
         include_all_blocks: Option<bool>,
     ) -> Result<Vec<Batch>> {
-        let mut events = Vec::new();
-        if let Some(selections) = event_selections {
-            for selection in selections {
-                events.push(EventSelection::from(selection));
-            }
-        }
-        let mut calls = Vec::new();
-        if let Some(selections) = call_selections {
-            for selection in selections {
-                calls.push(CallSelection::from(selection));
-            }
-        }
-        let mut evm_logs = Vec::new();
-        if let Some(selections) = evm_log_selections {
-            for selection in selections {
-                evm_logs.push(EvmLogSelection::from(selection));
-            }
-        }
-        let mut contracts_events = Vec::new();
-        if let Some(selections) = contracts_event_selections {
-            for selection in selections {
-                contracts_events.push(ContractsEventSelection::from(selection));
-            }
-        }
+        let events = self.unwrap_selections::<EventSelectionInput, EventSelection>(event_selections);
+        let calls = self.unwrap_selections::<CallSelectionInput, CallSelection>(call_selections);
+        let evm_logs = self.unwrap_selections::<EvmLogSelectionInput, EvmLogSelection>(evm_log_selections);
+        let eth_transactions = self.unwrap_selections::<EthTransactSelectionInput, EthTransactSelection>(eth_transact_selections);
+        let contracts_events = self.unwrap_selections::<ContractsEventSelectionInput, ContractsEventSelection>(contracts_event_selections);
         let include_all_blocks = include_all_blocks.unwrap_or(false);
         let mut batch = self.archive
-            .batch(limit, from_block, to_block, &evm_logs, &contracts_events,
+            .batch(limit, from_block, to_block, &evm_logs, &eth_transactions, &contracts_events,
                    &events, &calls, include_all_blocks)
             .await?;
         batch_to_camel_case(&mut batch);
@@ -132,5 +117,15 @@ impl QueryRoot {
         let status = self.archive.status().await?;
         timer.observe_duration();
         Ok(status)
+    }
+}
+
+impl QueryRoot {
+    fn unwrap_selections<T, U: From<T>>(&self, selections: Option<Vec<T>>) -> Vec<U> {
+        selections.map_or_else(Vec::new, |selections| {
+            selections.into_iter()
+                .map(|selection| U::from(selection))
+                .collect()
+        })
     }
 }

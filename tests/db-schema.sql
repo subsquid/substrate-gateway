@@ -45,7 +45,8 @@ CREATE TABLE call (
     origin jsonb,
     name varchar not null,
     args jsonb,
-    pos integer not null
+    pos integer not null,
+    contract varchar
 );
 
 

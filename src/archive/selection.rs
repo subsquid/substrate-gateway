@@ -77,6 +77,14 @@ pub struct EvmLogSelection {
     pub data: EvmLogDataSelection,
 }
 
+
+#[derive(Debug)]
+pub struct EthTransactSelection {
+    pub contract: String,
+    pub data: CallDataSelection,
+}
+
+
 #[derive(Debug)]
 pub struct ContractsEventSelection {
     pub contract: String,

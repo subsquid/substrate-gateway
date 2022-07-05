@@ -1,6 +1,6 @@
 use crate::archive::selection::{
     EventDataSelection, CallDataSelection, EventSelection, CallSelection,
-    EvmLogDataSelection, EvmLogSelection, ContractsEventSelection,
+    EvmLogDataSelection, EvmLogSelection, ContractsEventSelection, EthTransactSelection
 };
 use crate::archive::fields::{ParentCallFields, CallFields, ExtrinsicFields, EventFields, EvmLogFields};
 use async_graphql::InputObject;
@@ -229,8 +229,8 @@ pub struct EventSelectionInput {
 }
 
 
-impl EventSelection {
-    pub fn from(selection: EventSelectionInput) -> Self {
+impl From<EventSelectionInput> for EventSelection {
+    fn from(selection: EventSelectionInput) -> Self {
         EventSelection {
             name: selection.name,
             data: selection.data.map_or_else(|| {
@@ -250,8 +250,8 @@ pub struct CallSelectionInput {
 }
 
 
-impl CallSelection {
-    pub fn from(selection: CallSelectionInput) -> Self {
+impl From<CallSelectionInput> for CallSelection {
+    fn from(selection: CallSelectionInput) -> Self {
         CallSelection {
             name: selection.name,
             data: selection.data.map_or_else(|| {
@@ -271,8 +271,8 @@ pub struct EvmLogDataSelectionInput {
 }
 
 
-impl EvmLogDataSelection {
-    pub fn from(data: EvmLogDataSelectionInput) -> Self {
+impl From<EvmLogDataSelectionInput> for EvmLogDataSelection {
+    fn from(data: EvmLogDataSelectionInput) -> Self {
         EvmLogDataSelection {
             event: data.event.map_or_else(|| {
                 EvmLogFields::new(true)
@@ -293,8 +293,8 @@ pub struct EvmLogSelectionInput {
 }
 
 
-impl EvmLogSelection {
-    pub fn from(selection: EvmLogSelectionInput) -> Self {
+impl From<EvmLogSelectionInput> for EvmLogSelection {
+    fn from(selection: EvmLogSelectionInput) -> Self {
         EvmLogSelection {
             contract: selection.contract,
             filter: selection.filter.unwrap_or_default(),
@@ -309,14 +309,37 @@ impl EvmLogSelection {
 
 
 #[derive(InputObject, Clone)]
+#[graphql(name = "EthereumTransactionSelection")]
+pub struct EthTransactSelectionInput {
+    pub contract: String,
+    pub data: Option<CallDataSelectionInput>,
+}
+
+
+impl From<EthTransactSelectionInput> for EthTransactSelection {
+    fn from(selection: EthTransactSelectionInput) -> Self {
+        EthTransactSelection {
+            contract: selection.contract,
+            data: selection.data.map_or_else(|| {
+                CallDataSelection::new(true)
+            }, |data| {
+                CallDataSelection::from(data)
+            })
+        }
+    }
+}
+
+
+#[derive(InputObject, Clone)]
 #[graphql(name = "ContractsEventSelection")]
 pub struct ContractsEventSelectionInput {
     pub contract: String,
     pub data: Option<EventDataSelectionInput>,
 }
 
-impl ContractsEventSelection {
-    pub fn from(selection: ContractsEventSelectionInput) -> Self {
+
+impl From<ContractsEventSelectionInput> for ContractsEventSelection {
+    fn from(selection: ContractsEventSelectionInput) -> Self {
         ContractsEventSelection {
             contract: selection.contract,
             data: selection.data.map_or_else(|| {

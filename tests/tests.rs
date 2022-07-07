@@ -39,7 +39,8 @@ async fn test_parent_call_skipped() {
             "data": {
                 "call": {
                     "parent": {"_all": false}
-                }
+                },
+                "extrinsic": {"_all": false}
             }
         }]
     })).await;

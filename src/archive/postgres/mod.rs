@@ -186,22 +186,12 @@ impl ArchiveService for PostgresArchive {
 
         let extrinsic_ids = extrinsic_fields.keys().cloned().collect();
         let extrinsics = self.load_extrinsics(&extrinsic_ids).await?;
-        let mut extrinsics_by_block: HashMap<String, Vec<serde_json::Value>> = HashMap::new();
-        for extrinsic in extrinsics {
-            let fields = extrinsic_fields.get(&extrinsic.id).unwrap();
-            let serializer = ExtrinsicSerializer { extrinsic: &extrinsic, fields };
-            let data = serde_json::to_value(serializer).unwrap();
-            if extrinsics_by_block.contains_key(&extrinsic.block_id) {
-                extrinsics_by_block.get_mut(&extrinsic.block_id).unwrap().push(data);
-            } else {
-                extrinsics_by_block.insert(extrinsic.block_id.clone(), vec![data]);
-            }
-        }
 
         let events_calls = self.get_events_calls(&event_selections, &events).await?;
         let evm_logs_calls = self.get_evm_logs_calls(&evm_log_selections, &evm_logs).await?;
         let contracts_events_calls = self.get_contracts_events_calls(
             &contracts_event_selections, &contracts_events).await?;
+        let mut extrinsics_calls = self.get_extrinsics_calls(&extrinsic_fields, &mut call_fields, &extrinsics).await?;
 
         let mut events_by_block: HashMap<String, Vec<serde_json::Value>> = HashMap::new();
         for event in events {
@@ -217,6 +207,7 @@ impl ArchiveService for PostgresArchive {
 
         let mut calls_by_block: HashMap<String, Vec<serde_json::Value>> = HashMap::new();
         calls.append(&mut eth_transactions);
+        calls.append(&mut extrinsics_calls);
         for call in calls {
             if let Some(fields) = call_fields.get(&call.id) {
                 let serializer = CallSerializer { call: &call, fields };
@@ -226,6 +217,18 @@ impl ArchiveService for PostgresArchive {
                 } else {
                     calls_by_block.insert(call.block_id.clone(), vec![data]);
                 }
+            }
+        }
+
+        let mut extrinsics_by_block: HashMap<String, Vec<serde_json::Value>> = HashMap::new();
+        for extrinsic in extrinsics {
+            let fields = extrinsic_fields.get(&extrinsic.id).unwrap();
+            let serializer = ExtrinsicSerializer { extrinsic: &extrinsic, fields };
+            let data = serde_json::to_value(serializer).unwrap();
+            if extrinsics_by_block.contains_key(&extrinsic.block_id) {
+                extrinsics_by_block.get_mut(&extrinsic.block_id).unwrap().push(data);
+            } else {
+                extrinsics_by_block.insert(extrinsic.block_id.clone(), vec![data]);
             }
         }
         let batch = self.create_batch(blocks, events_by_block, calls_by_block, extrinsics_by_block, events_calls,
@@ -324,6 +327,37 @@ impl PostgresArchive {
             .bind(from_block)
             .bind(to_block)
             .bind(limit)
+            .fetch_all(&self.pool)
+            .observe_duration("call")
+            .await?;
+        Ok(calls)
+    }
+
+    async fn load_calls_by_ids(&self, ids: &Vec<String>) -> Result<Vec<FullCall>, Error> {
+        // i inject ids into the query otherwise it executes so long
+        let ids = ids.iter().map(|id| format!("'{}'", id))
+            .collect::<Vec<String>>()
+            .join(", ");
+        let query = format!("WITH RECURSIVE recursive_call AS (
+                SELECT * FROM call WHERE id IN ({})
+                UNION ALL
+                SELECT DISTINCT ON (call.id) call.*
+                FROM call JOIN recursive_call ON recursive_call.parent_id = call.id
+            )
+            SELECT
+                id,
+                parent_id,
+                block_id,
+                extrinsic_id,
+                name,
+                args,
+                success,
+                error,
+                origin,
+                pos::int8
+            FROM recursive_call
+            ORDER BY block_id", ids);
+        let calls = sqlx::query_as::<_, FullCall>(&query)
             .fetch_all(&self.pool)
             .observe_duration("call")
             .await?;
@@ -857,6 +891,36 @@ impl PostgresArchive {
             .observe_duration("call")
             .await?;
         Ok(calls)
+    }
+
+    async fn get_extrinsics_calls(
+        &self,
+        extrinsic_fields: &HashMap<String, ExtrinsicFields>,
+        call_fields: &mut HashMap<String, CallDataSelection>,
+        extrinsics: &Vec<Extrinsic>
+    ) -> Result<Vec<FullCall>, Error> {
+        let ids = extrinsics.iter()
+            .filter_map(|extrinsic| {
+                let fields = extrinsic_fields.get(&extrinsic.id).unwrap();
+                if let Some(data) = call_fields.get_mut(&extrinsic.call_id) {
+                    data.call.merge(&fields.call);
+                } else {
+                    let data = CallDataSelection {
+                        call: fields.call.clone(),
+                        extrinsic: ExtrinsicFields::new(false),
+                    };
+                    call_fields.insert(extrinsic.call_id.clone(), data);
+                    return Some(extrinsic.call_id.clone())
+                }
+                None
+            })
+            .collect::<Vec<String>>();
+        if ids.is_empty() {
+            Ok(vec![])
+        } else {
+            let calls = self.load_calls_by_ids(&ids).await?;
+            Ok(calls)
+        }
     }
 
     fn create_batch(

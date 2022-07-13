@@ -18,16 +18,22 @@ pub struct ArchiveGateway {
 }
 
 impl ArchiveGateway {
-    pub fn new(
-        pool: Pool<Postgres>,
-        evm_support: bool,
-        contracts_support: bool,
-    ) -> Self {
+    pub fn new(pool: Pool<Postgres>) -> Self {
         ArchiveGateway {
             pool,
-            evm_support,
-            contracts_support,
+            evm_support: false,
+            contracts_support: false,
         }
+    }
+
+    pub fn evm_support(mut self, value: bool) -> Self {
+        self.evm_support = value;
+        self
+    }
+
+    pub fn contracts_support(mut self, value: bool) -> Self {
+        self.contracts_support = value;
+        self
     }
 
     pub async fn run(&self) -> std::io::Result<()> {

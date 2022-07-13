@@ -37,7 +37,9 @@ async fn main() -> std::io::Result<()> {
         .connect_timeout(Duration::from_secs(5))
         .connect_lazy(&args.database_url)
         .unwrap();
-    ArchiveGateway::new(pool, args.evm_support, args.contracts_support)
+    ArchiveGateway::new(pool)
+        .evm_support(args.evm_support)
+        .contracts_support(args.contracts_support)
         .run()
         .await
 }

@@ -22,7 +22,11 @@ pub fn launch_gateway() {
                         .await
                         .unwrap();
                     spawn(async {
-                        ArchiveGateway::new(pool, false, true).run().await
+                        ArchiveGateway::new(pool)
+                            .evm_support(true)
+                            .contracts_support(true)
+                            .run()
+                            .await
                     });
                     sleep(Duration::from_secs(1)).await;
                 });

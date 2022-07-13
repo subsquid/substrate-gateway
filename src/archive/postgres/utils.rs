@@ -23,11 +23,3 @@ pub fn unify_and_merge(values: Vec<Value>, fields: Vec<&str>) -> Vec<Value> {
         })
         .collect()
 }
-
-pub fn merge<T: std::cmp::PartialEq + std::clone::Clone>(target: &mut Vec<T>, other: &Vec<T>) {
-    for item in other {
-        if !target.contains(item) {
-            target.push(item.clone());
-        }
-    }
-}

@@ -25,32 +25,6 @@ impl ParentCallFields {
         self.origin ||
         self.parent
     }
-
-    pub fn selected_fields(&self) -> Vec<String> {
-        let mut fields = vec![];
-        if self._all {
-            fields.extend_from_slice(&[
-                "args".to_string(),
-                "error".to_string(),
-                "origin".to_string(),
-                "parent_id".to_string(),
-            ]);
-        } else {
-            if self.args {
-                fields.push("args".to_string());
-            }
-            if self.error {
-                fields.push("error".to_string());
-            }
-            if self.origin {
-                fields.push("origin".to_string());
-            }
-            if self.parent {
-                fields.push("parent_id".to_string());
-            }
-        }
-        fields
-    }
 }
 
 #[derive(Debug, Clone)]

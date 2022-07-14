@@ -33,14 +33,6 @@ pub struct Event {
 
 #[derive(sqlx::FromRow, Debug)]
 pub struct Call {
-    pub block_id: String,
-    pub name: String,
-    pub data: serde_json::Value,
-}
-
-
-#[derive(sqlx::FromRow, Debug)]
-pub struct FullCall {
     pub id: String,
     pub parent_id: Option<String>,
     pub block_id: String,

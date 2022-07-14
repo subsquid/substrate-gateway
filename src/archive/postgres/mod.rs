@@ -4,7 +4,7 @@ use super::selection::{
     EvmLogSelection, ContractsEventSelection, EthTransactSelection
 };
 use super::fields::{ExtrinsicFields, EventFields, CallFields};
-use crate::entities::{Batch, Metadata, Status, Call, Event, BlockHeader, EvmLog, ContractsEvent, FullCall, Extrinsic};
+use crate::entities::{Batch, Metadata, Status, Event, BlockHeader, EvmLog, ContractsEvent, Call, Extrinsic};
 use crate::error::Error;
 use crate::metrics::ObserverExt;
 use std::collections::HashMap;
@@ -155,14 +155,28 @@ impl ArchiveService for PostgresArchive {
             }
         }
         for event in &contracts_events {
-            if let Some(value) = event.data.get("extrinsic_id") {
-                if let Some(extrinsic_id) = value.as_str() {
-                    for selection in contracts_event_selections {
-                        if selection.r#match(event) {
-                            if selection.data.event.extrinsic.any() {
-                                extrinsic_fields.entry(extrinsic_id.to_string())
-                                    .and_modify(|fields| fields.merge(&selection.data.event.extrinsic))
-                                    .or_insert_with(|| selection.data.event.extrinsic.clone());
+            for selection in contracts_event_selections {
+                if selection.r#match(event) {
+                    if let Some(value) = event.data.get("extrinsic_id") {
+                        if let Some(extrinsic_id) = value.as_str() {
+                            extrinsic_fields.entry(extrinsic_id.to_string())
+                                .and_modify(|fields| fields.merge(&selection.data.event.extrinsic))
+                                .or_insert_with(|| selection.data.event.extrinsic.clone());
+                        }
+                    }
+                    if let Some(value) = event.data.get("call_id") {
+                        if let Some(call_id) = value.as_str() {
+                            if let Some(fields) = call_fields.get_mut(call_id) {
+                                fields.call.merge(&selection.data.event.call);
+                            } else {
+                                if let Some(fields) = call_fields_to_load.get_mut(call_id) {
+                                    fields.merge(&selection.data.event.call);
+                                } else {
+                                    call_fields_to_load.insert(
+                                        call_id.to_string(),
+                                        selection.data.event.call.clone()
+                                    );
+                                }
                             }
                         }
                     }
@@ -170,13 +184,29 @@ impl ArchiveService for PostgresArchive {
             }
         }
         for log in &evm_logs {
+            let selection = &evm_log_selections[log.selection_index as usize];
             if let Some(value) = log.data.get("extrinsic_id") {
                 if let Some(extrinsic_id) = value.as_str() {
-                    let selection = &evm_log_selections[log.selection_index as usize];
                     if selection.data.event.extrinsic.any() {
                         extrinsic_fields.entry(extrinsic_id.to_string())
                             .and_modify(|fields| fields.merge(&selection.data.event.extrinsic))
                             .or_insert_with(|| selection.data.event.extrinsic.clone());
+                    }
+                }
+            }
+            if let Some(value) = log.data.get("call_id") {
+                if let Some(call_id) = value.as_str() {
+                    if let Some(fields) = call_fields.get_mut(call_id) {
+                        fields.call.merge(&selection.data.event.call);
+                    } else {
+                        if let Some(fields) = call_fields_to_load.get_mut(call_id) {
+                            fields.merge(&selection.data.event.call);
+                        } else {
+                            call_fields_to_load.insert(
+                                call_id.to_string(),
+                                selection.data.event.call.clone()
+                            );
+                        }
                     }
                 }
             }
@@ -203,9 +233,6 @@ impl ArchiveService for PostgresArchive {
             }
         }
 
-        let evm_logs_calls = self.get_evm_logs_calls(&evm_log_selections, &evm_logs).await?;
-        let contracts_events_calls = self.get_contracts_events_calls(
-            &contracts_event_selections, &contracts_events).await?;
         if !call_fields_to_load.is_empty() {
             let call_ids = call_fields_to_load.keys().cloned().collect();
             let mut additional_calls = self.load_calls_by_ids(&call_ids).await?;
@@ -260,7 +287,7 @@ impl ArchiveService for PostgresArchive {
             }
         }
         let batch = self.create_batch(blocks, events_by_block, calls_by_block, extrinsics_by_block,
-                                      evm_logs, evm_logs_calls, contracts_events, contracts_events_calls);
+                                      evm_logs, contracts_events);
         Ok(batch)
     }
 
@@ -308,7 +335,7 @@ impl PostgresArchive {
         from_block: i32,
         to_block: Option<i32>,
         call_selections: &Vec<CallSelection>
-    ) -> Result<Vec<FullCall>, Error> {
+    ) -> Result<Vec<Call>, Error> {
         if call_selections.is_empty() {
             return Ok(Vec::new());
         }
@@ -349,7 +376,7 @@ impl PostgresArchive {
                 pos::int8
             FROM recursive_calls
             ORDER BY block_id";
-        let calls = sqlx::query_as::<_, FullCall>(query)
+        let calls = sqlx::query_as::<_, Call>(query)
             .bind(wildcard)
             .bind(names)
             .bind(from_block)
@@ -361,7 +388,7 @@ impl PostgresArchive {
         Ok(calls)
     }
 
-    async fn load_calls_by_ids(&self, ids: &Vec<String>) -> Result<Vec<FullCall>, Error> {
+    async fn load_calls_by_ids(&self, ids: &Vec<String>) -> Result<Vec<Call>, Error> {
         // i inject ids into the query otherwise it executes so long
         let ids = ids.iter().map(|id| format!("'{}'", id))
             .collect::<Vec<String>>()
@@ -385,7 +412,7 @@ impl PostgresArchive {
                 pos::int8
             FROM recursive_call
             ORDER BY block_id", ids);
-        let calls = sqlx::query_as::<_, FullCall>(&query)
+        let calls = sqlx::query_as::<_, Call>(&query)
             .fetch_all(&self.pool)
             .observe_duration("call")
             .await?;
@@ -605,7 +632,7 @@ impl PostgresArchive {
         from_block: i32,
         to_block: Option<i32>,
         eth_transact_selections: &Vec<EthTransactSelection>
-    ) -> Result<Vec<FullCall>, Error> {
+    ) -> Result<Vec<Call>, Error> {
         if eth_transact_selections.is_empty() {
             return Ok(Vec::new());
         }
@@ -639,7 +666,7 @@ impl PostgresArchive {
                 pos::int8
             FROM recursive_call
             ORDER BY block_id";
-        let transactions = sqlx::query_as::<_, FullCall>(&query)
+        let transactions = sqlx::query_as::<_, Call>(&query)
             .bind(contracts)
             .bind(from_block)
             .bind(to_block)
@@ -652,10 +679,10 @@ impl PostgresArchive {
 
     fn get_block_ids(
         &self,
-        calls: &Vec<FullCall>,
+        calls: &Vec<Call>,
         events: &Vec<Event>,
         evm_logs: &Vec<EvmLog>,
-        eth_transactions: &Vec<FullCall>,
+        eth_transactions: &Vec<Call>,
         contracts_events: &Vec<ContractsEvent>,
         limit: i32
     ) -> Vec<String> {
@@ -751,99 +778,6 @@ impl PostgresArchive {
         Ok(extrinsics)
     }
 
-    async fn get_contracts_events_calls(
-        &self,
-        contracts_event_selections: &Vec<ContractsEventSelection>,
-        events: &Vec<ContractsEvent>
-    ) -> Result<Vec<Call>, Error> {
-        let mut calls_info = HashMap::new();
-        for event in events {
-            let selection = &contracts_event_selections[event.selection_index as usize];
-            let mut call_fields: Vec<String> = selection.data.event.call.selected_fields()
-                .iter()
-                .map(|field| field.to_string())
-                .collect();
-            if !call_fields.is_empty() {
-                call_fields.extend_from_slice(&["id".to_string(), "pos".to_string(), "name".to_string(), "success".to_string()]);
-                let call_id = event.data.get("call_id")
-                    .expect("call_id should be loaded").as_str();
-                if let Some(call_id) = call_id {
-                    // TODO: merge requirements from multiple events
-                    calls_info.insert(call_id.clone(), call_fields);
-                }
-            }
-        }
-        // check intersection between already loaded calls
-        let query = calls_info.into_iter()
-            .map(|(key, value)| {
-                let build_object_fields = value
-                    .iter()
-                    .map(|field| format!("'{}', {}", &field, &field))
-                    .collect::<Vec<String>>()
-                    .join(", ");
-                format!("(SELECT block_id, name, jsonb_build_object({}) as data FROM call WHERE id = '{}')", &build_object_fields, &key)
-            })
-            .collect::<Vec<String>>()
-            .join(" UNION ");
-        let calls = sqlx::query_as::<_, Call>(&query)
-            .fetch_all(&self.pool)
-            .observe_duration("call")
-            .await?;
-        Ok(calls)
-    }
-
-    async fn get_evm_logs_calls(
-        &self,
-        evm_log_selections: &Vec<EvmLogSelection>,
-        evm_logs: &Vec<EvmLog>
-    ) -> Result<Vec<Call>, Error> {
-        let query = evm_log_selections.iter()
-            .enumerate()
-            .filter_map(|(index, selection)| {
-                let mut fields = selection.data.event.call.selected_fields()
-                    .iter()
-                    .map(|field| field.to_string())
-                    .collect::<Vec<String>>();
-                if fields.is_empty() {
-                    None
-                } else {
-                    fields.extend_from_slice(&["id".to_string(), "pos".to_string(), "name".to_string(), "success".to_string()]);
-                    let mut ids = evm_logs.iter()
-                        .filter_map(|log| {
-                            if log.selection_index == index as i16 {
-                                let call_id = log.data.get("call_id")
-                                    .expect("call_id should be loaded").as_str().unwrap();
-                                Some(format!("'{}'", call_id))
-                            } else {
-                                None
-                            }
-                        })
-                        .collect::<Vec<String>>();
-                    if ids.is_empty() {
-                        return None
-                    }
-                    ids.dedup();
-                    let build_object_fields = fields
-                        .iter()
-                        .map(|field| format!("'{}', {}", &field, &field))
-                        .collect::<Vec<String>>()
-                        .join(", ");
-                    Some(format!(
-                        "(SELECT block_id, name, jsonb_build_object({}) AS data FROM call WHERE id IN ({}))",
-                        &build_object_fields, &ids.join(", ")
-                    ))
-                }
-
-            })
-            .collect::<Vec<String>>()
-            .join(" UNION ");
-        let calls = sqlx::query_as::<_, Call>(&query)
-            .fetch_all(&self.pool)
-            .observe_duration("call")
-            .await?;
-        Ok(calls)
-    }
-
     fn create_batch(
         &self,
         blocks: Vec<BlockHeader>,
@@ -851,9 +785,7 @@ impl PostgresArchive {
         mut calls_by_block: HashMap<String, Vec<serde_json::Value>>,
         mut extrinsics_by_block: HashMap<String, Vec<serde_json::Value>>,
         evm_logs: Vec<EvmLog>,
-        evm_logs_calls: Vec<Call>,
         contracts_events: Vec<ContractsEvent>,
-        contracts_events_calls: Vec<Call>,
     ) -> Vec<Batch> {
         for log in evm_logs {
             events_by_block.entry(log.block_id)
@@ -864,16 +796,6 @@ impl PostgresArchive {
             events_by_block.entry(event.block_id)
                 .or_insert_with(Vec::new)
                 .push(event.data);
-        }
-        for call in evm_logs_calls {
-            calls_by_block.entry(call.block_id)
-                .or_insert_with(Vec::new)
-                .push(call.data);
-        }
-        for call in contracts_events_calls {
-            calls_by_block.entry(call.block_id)
-                .or_insert_with(Vec::new)
-                .push(call.data);
         }
         blocks.into_iter()
             .map(|block| {
@@ -897,9 +819,9 @@ impl PostgresArchive {
 
     fn visit_parent_call(
         &self,
-        call: &FullCall,
+        call: &Call,
         data: &CallDataSelection,
-        calls: &Vec<FullCall>,
+        calls: &Vec<Call>,
         call_fields: &mut HashMap<String, CallDataSelection>,
     ) {
         if let Some(parent_id) = &call.parent_id {

@@ -1,6 +1,6 @@
 use crate::archive::fields::{ExtrinsicFields, EventFields};
 use crate::archive::selection::CallDataSelection;
-use crate::entities::{FullCall, Event, Extrinsic};
+use crate::entities::{Call, Event, Extrinsic};
 use serde::ser::SerializeStruct;
 
 pub struct ExtrinsicSerializer<'a> {
@@ -59,7 +59,7 @@ impl<'a> serde::Serialize for EventSerializer<'a> {
 }
 
 pub struct CallSerializer<'a> {
-    pub call: &'a FullCall,
+    pub call: &'a Call,
     pub fields: &'a CallDataSelection,
 }
 

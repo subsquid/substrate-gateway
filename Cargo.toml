@@ -1,6 +1,6 @@
 [package]
 name = "archive-gateway"
-version = "1.2.1"
+version = "1.2.2"
 description = "Graphql server for subsquid archive"
 edition = "2021"
 

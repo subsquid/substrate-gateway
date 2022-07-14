@@ -1,10 +1,10 @@
-use crate::entities::{FullCall, Event, ContractsEvent};
+use crate::entities::{Call, Event, ContractsEvent};
 use crate::archive::{CallSelection, EventSelection, ContractsEventSelection, EthTransactSelection};
 
 const WILDCARD: &str = "*";
 
 impl CallSelection {
-    pub fn r#match(&self, call: &FullCall) -> bool {
+    pub fn r#match(&self, call: &Call) -> bool {
         self.name == WILDCARD || self.name == call.name
     }
 }
@@ -16,7 +16,7 @@ impl EventSelection {
 }
 
 impl EthTransactSelection {
-    pub fn r#match(&self, call: &FullCall) -> bool {
+    pub fn r#match(&self, call: &Call) -> bool {
         if let Some(args) = &call.args {
             if let Some(transaction) = args.get("transaction") {
                 let mut action = transaction.get("action");

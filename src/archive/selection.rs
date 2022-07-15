@@ -90,3 +90,15 @@ pub struct ContractsEventSelection {
     pub contract: String,
     pub data: EventDataSelection,
 }
+
+#[derive(Debug)]
+pub struct GearMessageEnqueuedSelection {
+    pub program: String,
+    pub data: EventDataSelection,
+}
+
+#[derive(Debug)]
+pub struct GearUserMessageSentSelection {
+    pub program: String,
+    pub data: EventDataSelection,
+}

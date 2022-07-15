@@ -1,6 +1,7 @@
 use crate::archive::selection::{
     EventDataSelection, CallDataSelection, EventSelection, CallSelection,
-    EvmLogDataSelection, EvmLogSelection, ContractsEventSelection, EthTransactSelection
+    EvmLogDataSelection, EvmLogSelection, ContractsEventSelection, EthTransactSelection,
+    GearMessageEnqueuedSelection, GearUserMessageSentSelection,
 };
 use crate::archive::fields::{ParentCallFields, CallFields, ExtrinsicFields, EventFields, EvmLogFields};
 use async_graphql::InputObject;
@@ -342,6 +343,50 @@ impl From<ContractsEventSelectionInput> for ContractsEventSelection {
     fn from(selection: ContractsEventSelectionInput) -> Self {
         ContractsEventSelection {
             contract: selection.contract,
+            data: selection.data.map_or_else(|| {
+                EventDataSelection::new(true)
+            }, |data| {
+                EventDataSelection::from(data)
+            })
+        }
+    }
+}
+
+
+#[derive(InputObject, Clone)]
+#[graphql(name = "GearMessageEnqueuedSelection")]
+pub struct GearMessageEnqueuedSelectionInput {
+    pub program: String,
+    pub data: Option<EventDataSelectionInput>,
+}
+
+
+impl From<GearMessageEnqueuedSelectionInput> for GearMessageEnqueuedSelection {
+    fn from(selection: GearMessageEnqueuedSelectionInput) -> Self {
+        GearMessageEnqueuedSelection {
+            program: selection.program,
+            data: selection.data.map_or_else(|| {
+                EventDataSelection::new(true)
+            }, |data| {
+                EventDataSelection::from(data)
+            })
+        }
+    }
+}
+
+
+#[derive(InputObject, Clone)]
+#[graphql(name = "GearUserMessageSentSelection")]
+pub struct GearUserMessageSentSelectionInput {
+    pub program: String,
+    pub data: Option<EventDataSelectionInput>,
+}
+
+
+impl From<GearUserMessageSentSelectionInput> for GearUserMessageSentSelection {
+    fn from(selection: GearUserMessageSentSelectionInput) -> Self {
+        GearUserMessageSentSelection {
+            program: selection.program,
             data: selection.data.map_or_else(|| {
                 EventDataSelection::new(true)
             }, |data| {

@@ -133,15 +133,16 @@ async fn test_wildcard_search() {
     let client = Client::new();
     let batch = client.batch(json!({
         "limit": 1,
+        "fromBlock": 734,
         "calls": [{"name": "*"}],
         "events": [{"name": "*"}],
     })).await;
     let event = &batch.events[0];
     assert!(event.id == "0000000734-000004-251d1".to_string());
-    assert!(event.name == Some("Contracts.ContractEmitted".to_string()));
+    assert!(event.name == "Contracts.ContractEmitted".to_string());
     let call = &batch.calls[0];
     assert!(call.id == "0000000734-000001-251d1".to_string());
-    assert!(call.name == Some("Contracts.call".to_string()));
+    assert!(call.name == "Contracts.call".to_string());
 }
 
 #[actix_web::test]
@@ -154,7 +155,7 @@ async fn test_contracts_wildcard_search() {
     })).await;
     let event = &batch.events[0];
     assert!(event.id == "0000000734-000004-251d1".to_string());
-    assert!(event.name == Some("Contracts.ContractEmitted".to_string()));
+    assert!(event.name == "Contracts.ContractEmitted".to_string());
 }
 
 #[actix_web::test]
@@ -167,5 +168,31 @@ async fn test_evm_wildcard_search() {
     })).await;
     let event = &batch.events[0];
     assert!(event.id == "0000569006-000084-5e412".to_string());
-    assert!(event.name == Some("EVM.Log".to_string()));
+    assert!(event.name == "EVM.Log".to_string());
+}
+
+#[actix_web::test]
+async fn test_gear_messages_enqueued() {
+    launch_gateway();
+    let client = Client::new();
+    let batch = client.batch(json!({
+        "limit": 1,
+        "gearMessagesEnqueued": [{"program": "0x5466a0b28225bcc8e33f6bdde7a95f5fcf81bfd94d70ca099d0a8bae230dbaa1"}],
+    })).await;
+    let event = &batch.events[0];
+    assert!(event.id == "0000000006-000003-7ec94".to_string());
+    assert!(event.name == "Gear.MessageEnqueued");
+}
+
+#[actix_web::test]
+async fn test_gear_user_sent_messages() {
+    launch_gateway();
+    let client = Client::new();
+    let batch = client.batch(json!({
+        "limit": 1,
+        "gearUserMessagesSent": [{"program": "0x5466a0b28225bcc8e33f6bdde7a95f5fcf81bfd94d70ca099d0a8bae230dbaa1"}],
+    })).await;
+    let event = &batch.events[0];
+    assert!(event.id == "0000000006-000007-7ec94".to_string());
+    assert!(event.name == "Gear.UserMessageSent");
 }

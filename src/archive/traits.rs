@@ -3,6 +3,8 @@ pub trait ArchiveService {
     type EvmLogSelection;
     type EthTransactSelection;
     type ContractsEventSelection;
+    type GearMessageEnqueuedSelection;
+    type GearUserMessageSentSelection;
     type EventSelection;
     type CallSelection;
     type Batch;
@@ -18,6 +20,8 @@ pub trait ArchiveService {
         evm_log_selections: &Vec<Self::EvmLogSelection>,
         eth_transact_selections: &Vec<Self::EthTransactSelection>,
         contracts_event_selections: &Vec<Self::ContractsEventSelection>,
+        gear_message_enqueued_selections: &Vec<Self::GearMessageEnqueuedSelection>,
+        gear_user_message_sent_selections: &Vec<Self::GearUserMessageSentSelection>,
         event_selections: &Vec<Self::EventSelection>,
         call_selections: &Vec<Self::CallSelection>,
         include_all_blocks: bool

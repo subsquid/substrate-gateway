@@ -2,6 +2,7 @@ use crate::archive::ArchiveService;
 use crate::archive::selection::{
     EventSelection, CallSelection, EvmLogSelection,
     ContractsEventSelection, EthTransactSelection,
+    GearMessageEnqueuedSelection, GearUserMessageSentSelection,
 };
 use crate::error::Error;
 use crate::entities::{Batch, Metadata, Status};
@@ -12,6 +13,7 @@ use async_graphql::{Context, Object, Result};
 use inputs::{
     EventSelectionInput, CallSelectionInput, EthTransactSelectionInput,
     EvmLogSelectionInput, ContractsEventSelectionInput,
+    GearMessageEnqueuedSelectionInput, GearUserMessageSentSelectionInput,
 };
 
 mod inputs;
@@ -26,6 +28,12 @@ pub struct ContractsSupport(pub bool);
 
 fn is_contracts_supported(ctx: &Context<'_>) -> bool {
     ctx.data_unchecked::<ContractsSupport>().0
+}
+
+pub struct GearSupport(pub bool);
+
+fn is_gear_supported(ctx: &Context<'_>) -> bool {
+    ctx.data_unchecked::<GearSupport>().0
 }
 
 fn keys_to_camel_case(map: &mut Map<String, Value>) {
@@ -57,6 +65,8 @@ pub struct QueryRoot {
         EvmLogSelection = EvmLogSelection,
         EthTransactSelection = EthTransactSelection,
         ContractsEventSelection = ContractsEventSelection,
+        GearMessageEnqueuedSelection = GearMessageEnqueuedSelection,
+        GearUserMessageSentSelection = GearUserMessageSentSelection,
         EventSelection = EventSelection,
         CallSelection = CallSelection,
         Batch = Batch,
@@ -80,6 +90,10 @@ impl QueryRoot {
         eth_transact_selections: Option<Vec<EthTransactSelectionInput>>,
         #[graphql(name = "contractsEvents", visible = "is_contracts_supported")]
         contracts_event_selections: Option<Vec<ContractsEventSelectionInput>>,
+        #[graphql(name = "gearMessagesEnqueued", visible = "is_gear_supported")]
+        gear_message_enqueued_selections: Option<Vec<GearMessageEnqueuedSelectionInput>>,
+        #[graphql(name = "gearUserMessagesSent", visible = "is_gear_supported")]
+        gear_user_message_sent_selections: Option<Vec<GearUserMessageSentSelectionInput>>,
         #[graphql(name = "events")]
         event_selections: Option<Vec<EventSelectionInput>>,
         #[graphql(name = "calls")]
@@ -91,10 +105,12 @@ impl QueryRoot {
         let evm_logs = self.unwrap_selections::<EvmLogSelectionInput, EvmLogSelection>(evm_log_selections);
         let eth_transactions = self.unwrap_selections::<EthTransactSelectionInput, EthTransactSelection>(eth_transact_selections);
         let contracts_events = self.unwrap_selections::<ContractsEventSelectionInput, ContractsEventSelection>(contracts_event_selections);
+        let gear_messages_enqueued = self.unwrap_selections::<GearMessageEnqueuedSelectionInput, GearMessageEnqueuedSelection>(gear_message_enqueued_selections);
+        let gear_user_messages_sent = self.unwrap_selections::<GearUserMessageSentSelectionInput, GearUserMessageSentSelection>(gear_user_message_sent_selections);
         let include_all_blocks = include_all_blocks.unwrap_or(false);
         let mut batch = self.archive
             .batch(limit, from_block, to_block, &evm_logs, &eth_transactions, &contracts_events,
-                   &events, &calls, include_all_blocks)
+                   &gear_messages_enqueued, &gear_user_messages_sent, &events, &calls, include_all_blocks)
             .await?;
         batch_to_camel_case(&mut batch);
         Ok(batch)

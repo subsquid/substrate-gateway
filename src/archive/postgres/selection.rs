@@ -1,5 +1,8 @@
 use crate::entities::{Call, Event, ContractsEvent};
-use crate::archive::{CallSelection, EventSelection, ContractsEventSelection, EthTransactSelection};
+use crate::archive::{
+    CallSelection, EventSelection, ContractsEventSelection, EthTransactSelection,
+    GearMessageEnqueuedSelection, GearUserMessageSentSelection,
+};
 
 const WILDCARD: &str = "*";
 
@@ -43,6 +46,34 @@ impl ContractsEventSelection {
         if let Some(value) = event.data.get("contract") {
             if let Some(contract) = value.as_str() {
                 return contract.to_string() == self.contract
+            }
+        }
+        false
+    }
+}
+
+impl GearMessageEnqueuedSelection {
+    pub fn r#match(&self, event: &Event) -> bool {
+        if let Some(args) = &event.args {
+            if let Some(value) = args.get("destination") {
+                if let Some(destination) = value.as_str() {
+                    return destination == self.program
+                }
+            }
+        }
+        false
+    }
+}
+
+impl GearUserMessageSentSelection {
+    pub fn r#match(&self, event: &Event) -> bool {
+        if let Some(args) = &event.args {
+            if let Some(value) = args.get("message") {
+                if let Some(value) = value.get("source") {
+                    if let Some(source) = value.as_str() {
+                        return source == self.program
+                    }
+                }
             }
         }
         false

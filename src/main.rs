@@ -23,6 +23,10 @@ struct Args {
     /// Сontracts pallet support
     #[clap(long)]
     contracts_support: bool,
+
+    /// Gear pallet support
+    #[clap(long)]
+    gear_support: bool
 }
 
 #[tracing::instrument]
@@ -40,6 +44,7 @@ async fn main() -> std::io::Result<()> {
     ArchiveGateway::new(pool)
         .evm_support(args.evm_support)
         .contracts_support(args.contracts_support)
+        .gear_support(args.gear_support)
         .run()
         .await
 }

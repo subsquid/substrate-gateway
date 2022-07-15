@@ -1,7 +1,9 @@
 use super::ArchiveService;
 use super::selection::{
     CallSelection, CallDataSelection, EventSelection,
-    EvmLogSelection, ContractsEventSelection, EthTransactSelection
+    EvmLogSelection, ContractsEventSelection, EthTransactSelection,
+    GearMessageEnqueuedSelection, GearUserMessageSentSelection,
+    EventDataSelection
 };
 use super::fields::{ExtrinsicFields, EventFields, CallFields};
 use crate::entities::{Batch, Metadata, Status, Event, BlockHeader, EvmLog, ContractsEvent, Call, Extrinsic};
@@ -26,6 +28,8 @@ impl ArchiveService for PostgresArchive {
     type EvmLogSelection = EvmLogSelection;
     type EthTransactSelection = EthTransactSelection;
     type ContractsEventSelection = ContractsEventSelection;
+    type GearMessageEnqueuedSelection = GearMessageEnqueuedSelection;
+    type GearUserMessageSentSelection = GearUserMessageSentSelection;
     type EventSelection = EventSelection;
     type CallSelection = CallSelection;
     type Batch = Batch;
@@ -41,6 +45,8 @@ impl ArchiveService for PostgresArchive {
         evm_log_selections: &Vec<Self::EvmLogSelection>,
         eth_transact_selections: &Vec<Self::EthTransactSelection>,
         contracts_event_selections: &Vec<Self::ContractsEventSelection>,
+        gear_message_enqueued_selections: &Vec<Self::GearMessageEnqueuedSelection>,
+        gear_user_message_sent_selections: &Vec<Self::GearUserMessageSentSelection>,
         event_selections: &Vec<Self::EventSelection>,
         call_selections: &Vec<Self::CallSelection>,
         include_all_blocks: bool
@@ -52,18 +58,26 @@ impl ArchiveService for PostgresArchive {
                                                               &eth_transact_selections).await?;
         let mut contracts_events = self.get_contracts_events(limit, from_block, to_block,
                                                              &contracts_event_selections).await?;
+        let mut messages_enqueued = self.load_messages_enqueued(limit, from_block, to_block,
+                                                                &gear_message_enqueued_selections).await?;
+        let mut messages_sent = self.load_messages_sent(limit, from_block, to_block,
+                                                        &gear_user_message_sent_selections).await?;
         let blocks = if include_all_blocks {
             let blocks = self.get_blocks(from_block, to_block, limit).await?;
             blocks
         } else {
             let block_ids = self.get_block_ids(&calls, &events, &evm_logs, &eth_transactions,
-                                               &contracts_events, limit);
+                                               &contracts_events, &messages_enqueued, &messages_sent, limit);
             calls = calls.into_iter().filter(|call| block_ids.contains(&call.block_id)).collect();
             events = events.into_iter().filter(|event| block_ids.contains(&event.block_id)).collect();
             evm_logs = evm_logs.into_iter().filter(|log| block_ids.contains(&log.block_id)).collect();
             eth_transactions = eth_transactions.into_iter()
                 .filter(|transaction| block_ids.contains(&transaction.block_id)).collect();
             contracts_events = contracts_events.into_iter()
+                .filter(|event| block_ids.contains(&event.block_id)).collect();
+            messages_enqueued = messages_enqueued.into_iter()
+                .filter(|event| block_ids.contains(&event.block_id)).collect();
+            messages_sent = messages_sent.into_iter()
                 .filter(|event| block_ids.contains(&event.block_id)).collect();
             self.get_blocks_by_ids(&block_ids).await?
         };
@@ -120,40 +134,60 @@ impl ArchiveService for PostgresArchive {
                 }
             }
         }
-        for event in &events {
-            for selection in event_selections {
-                if selection.r#match(event) {
-                    event_fields.entry(event.id.clone())
-                        .and_modify(|fields| fields.merge(&selection.data.event))
-                        .or_insert_with(|| selection.data.event.clone());
 
-                    if let Some(extrinsic_id) = &event.extrinsic_id {
-                        if selection.data.event.extrinsic.any() {
-                            extrinsic_fields.entry(extrinsic_id.clone())
-                                .and_modify(|fields| fields.merge(&selection.data.event.extrinsic))
-                                .or_insert_with(|| selection.data.event.extrinsic.clone());
-                        }
-                    }
+        let mut process_event = |event: &Event, data: &EventDataSelection| {
+            event_fields.entry(event.id.clone())
+                .and_modify(|fields| fields.merge(&data.event))
+                .or_insert_with(|| data.event.clone());
 
-                    if let Some(call_id) = &event.call_id {
-                        if selection.data.event.call.any() {
-                            if let Some(fields) = call_fields.get_mut(call_id) {
-                                fields.call.merge(&selection.data.event.call);
-                            } else {
-                                if let Some(fields) = call_fields_to_load.get_mut(call_id) {
-                                    fields.merge(&selection.data.event.call);
-                                } else {
-                                    call_fields_to_load.insert(
-                                        call_id.clone(),
-                                        selection.data.event.call.clone()
-                                    );
-                                }
-                            }
+            if let Some(extrinsic_id) = &event.extrinsic_id {
+                if data.event.extrinsic.any() {
+                    extrinsic_fields.entry(extrinsic_id.clone())
+                        .and_modify(|fields| fields.merge(&data.event.extrinsic))
+                        .or_insert_with(|| data.event.extrinsic.clone());
+                }
+            }
+
+            if let Some(call_id) = &event.call_id {
+                if data.event.call.any() {
+                    if let Some(fields) = call_fields.get_mut(call_id) {
+                        fields.call.merge(&data.event.call);
+                    } else {
+                        if let Some(fields) = call_fields_to_load.get_mut(call_id) {
+                            fields.merge(&data.event.call);
+                        } else {
+                            call_fields_to_load.insert(
+                                call_id.clone(),
+                                data.event.call.clone()
+                            );
                         }
                     }
                 }
             }
+        };
+        for event in &events {
+            for selection in event_selections {
+                if selection.r#match(event) {
+                    process_event(event, &selection.data);
+                }
+            }
         }
+        for event in &messages_enqueued {
+            for selection in gear_message_enqueued_selections {
+                if selection.r#match(event) {
+                    process_event(event, &selection.data);
+                }
+            }
+        }
+        events.append(&mut messages_enqueued);
+        for event in &messages_sent {
+            for selection in gear_user_message_sent_selections {
+                if selection.r#match(event) {
+                    process_event(event, &selection.data);
+                }
+            }
+        }
+        events.append(&mut messages_sent);
         for event in &contracts_events {
             for selection in contracts_event_selections {
                 if selection.r#match(event) {
@@ -472,6 +506,98 @@ impl PostgresArchive {
         Ok(events)
     }
 
+    async fn load_messages_enqueued(
+        &self,
+        limit: i32,
+        from_block: i32,
+        to_block: Option<i32>,
+        message_enqueued_selections: &Vec<GearMessageEnqueuedSelection>,
+    ) -> Result<Vec<Event>, Error> {
+        if message_enqueued_selections.is_empty() {
+            return Ok(Vec::new())
+        }
+        let from_block = format!("{:010}", from_block);
+        let to_block = to_block.map_or("null".to_string(), |to_block| format!("{:010}", to_block + 1));
+        let programs = message_enqueued_selections.iter()
+            .map(|selection| selection.program.clone())
+            .collect::<Vec<String>>();
+        let query = "SELECT
+                id,
+                block_id,
+                index_in_block::int8,
+                phase,
+                extrinsic_id,
+                call_id,
+                name,
+                args,
+                pos::int8,
+                contract
+            FROM event
+            WHERE jsonb_extract_path_text(args, 'destination') = ANY($1)
+                AND name = 'Gear.MessageEnqueued' AND block_id IN (
+                    SELECT DISTINCT block_id FROM event
+                    WHERE jsonb_extract_path_text(args, 'destination') = ANY($1)
+                        AND block_id > $2 AND ($3 IS null OR block_id < $3)
+                        AND name = 'Gear.MessageEnqueued'
+                    ORDER BY block_id
+                    LIMIT $4
+                )";
+        let events = sqlx::query_as::<_, Event>(query)
+            .bind(&programs)
+            .bind(from_block)
+            .bind(to_block)
+            .bind(limit)
+            .fetch_all(&self.pool)
+            .await?;
+        return Ok(events)
+    }
+
+    async fn load_messages_sent(
+        &self,
+        limit: i32,
+        from_block: i32,
+        to_block: Option<i32>,
+        message_sent_selections: &Vec<GearUserMessageSentSelection>,
+    ) -> Result<Vec<Event>, Error> {
+        if message_sent_selections.is_empty() {
+            return Ok(Vec::new())
+        }
+        let from_block = format!("{:010}", from_block);
+        let to_block = to_block.map_or("null".to_string(), |to_block| format!("{:010}", to_block + 1));
+        let programs = message_sent_selections.iter()
+            .map(|selection| selection.program.clone())
+            .collect::<Vec<String>>();
+        let query = "SELECT
+                id,
+                block_id,
+                index_in_block::int8,
+                phase,
+                extrinsic_id,
+                call_id,
+                name,
+                args,
+                pos::int8,
+                contract
+            FROM event
+            WHERE jsonb_extract_path_text(args, 'message', 'source') = ANY($1)
+                AND name = 'Gear.UserMessageSent' AND block_id IN (
+                    SELECT DISTINCT block_id FROM event
+                    WHERE jsonb_extract_path_text(args, 'message', 'source') = ANY($1)
+                        AND block_id > $2 AND ($3 IS null OR block_id < $3)
+                        AND name = 'Gear.UserMessageSent'
+                    ORDER BY block_id
+                    LIMIT $4
+                )";
+        let events = sqlx::query_as::<_, Event>(query)
+            .bind(&programs)
+            .bind(from_block)
+            .bind(to_block)
+            .bind(limit)
+            .fetch_all(&self.pool)
+            .await?;
+        return Ok(events)
+    }
+
     async fn get_contracts_events(
         &self,
         limit: i32,
@@ -684,6 +810,8 @@ impl PostgresArchive {
         evm_logs: &Vec<EvmLog>,
         eth_transactions: &Vec<Call>,
         contracts_events: &Vec<ContractsEvent>,
+        messages_enqueued: &Vec<Event>,
+        messages_sent: &Vec<Event>,
         limit: i32
     ) -> Vec<String> {
         let mut block_ids = Vec::new();
@@ -700,6 +828,12 @@ impl PostgresArchive {
             block_ids.push(transaction.block_id.clone());
         }
         for event in contracts_events {
+            block_ids.push(event.block_id.clone());
+        }
+        for event in messages_enqueued {
+            block_ids.push(event.block_id.clone());
+        }
+        for event in messages_sent {
             block_ids.push(event.block_id.clone());
         }
         block_ids.sort();

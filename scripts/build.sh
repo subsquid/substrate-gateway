@@ -13,7 +13,7 @@ then
     CC_aarch64_unknown_linux_gnu=aarch64-linux-gnu-gcc \
     CXX_aarch64_unknown_linux_gnu=aarch64-linux-gnu-g++ \
     cargo build --release --target aarch64-unknown-linux-gnu
-    mv ./target/aarch64-unknown-linux-gnu/release/archive-gateway ./target/release/
+    mv ./target/aarch64-unknown-linux-gnu/release/substrate-gateway ./target/release/
 else
     cargo build --release
 fi

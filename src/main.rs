@@ -1,7 +1,7 @@
 use std::time::Duration;
 use clap::Parser;
 use sqlx::postgres::PgPoolOptions;
-use archive_gateway::ArchiveGateway;
+use substrate_gateway::ArchiveGateway;
 
 mod logger;
 

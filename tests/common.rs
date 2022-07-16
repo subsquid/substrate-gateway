@@ -4,7 +4,7 @@ use std::time::Duration;
 use sqlx::postgres::PgPoolOptions;
 use actix_web::rt::{Runtime, spawn};
 use actix_web::rt::time::sleep;
-use archive_gateway::ArchiveGateway;
+use substrate_gateway::ArchiveGateway;
 use serde::Deserialize;
 use serde_json::Value;
 

@@ -1,12 +1,12 @@
 FROM --platform=$BUILDPLATFORM rust:1.61.0 AS builder
 ARG TARGETPLATFORM
 ARG BUILDPLATFORM
-WORKDIR /archive-gateway
+WORKDIR /substrate-gateway
 COPY ./ .
 RUN scripts/build.sh $TARGETPLATFORM
 
 FROM debian:bullseye-slim
-WORKDIR /archive-gateway
-COPY --from=builder /archive-gateway/target/release/archive-gateway ./archive-gateway
-ENTRYPOINT ["/archive-gateway/archive-gateway"]
+WORKDIR /substrate-gateway
+COPY --from=builder /substrate-gateway/target/release/substrate-gateway ./substrate-gateway
+ENTRYPOINT ["/substrate-gateway/substrate-gateway"]
 EXPOSE 8000

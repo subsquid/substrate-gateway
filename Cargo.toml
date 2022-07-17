@@ -4,7 +4,10 @@ version = "1.2.2"
 description = "Graphql server for substrate-ingest"
 edition = "2021"
 
-# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+[profile.release]
+lto = true
+codegen-units = 1
+opt-level = 'z'
 
 [dependencies]
 async-graphql = { version = "4.0.3", features = [ "chrono" ] }

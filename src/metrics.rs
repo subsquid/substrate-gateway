@@ -85,6 +85,6 @@ pub trait ObserverExt: Sized + Future {
             timer: None,
         }
     }
-} 
+}
 
 impl<F: Future> ObserverExt for F {}

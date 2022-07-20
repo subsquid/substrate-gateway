@@ -9,7 +9,7 @@ use super::fields::{ExtrinsicFields, EventFields, CallFields};
 use crate::entities::{Batch, Metadata, Status, Event, BlockHeader, EvmLog, ContractsEvent, Call, Extrinsic};
 use crate::error::Error;
 use crate::metrics::ObserverExt;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use sqlx::{Pool, Postgres};
 use utils::unify_and_merge;
 use serializer::{CallSerializer, EventSerializer, ExtrinsicSerializer};
@@ -368,11 +368,14 @@ impl PostgresArchive {
         limit: i32,
         from_block: i32,
         to_block: Option<i32>,
-        call_selections: &Vec<CallSelection>
+        call_selections: &Vec<CallSelection>,
     ) -> Result<Vec<Call>, Error> {
         if call_selections.is_empty() {
             return Ok(Vec::new());
         }
+        let from_block = format!("{:010}", from_block);
+        let to_block = to_block.map(|to_block| format!("{:010}", to_block + 1));
+
         let mut wildcard = false;
         let mut names = Vec::new();
         for selection in call_selections {
@@ -382,22 +385,44 @@ impl PostgresArchive {
                 names.push(selection.name.clone());
             }
         }
-        let from_block = format!("{:010}", from_block);
-        let to_block = to_block.map(|to_block| format!("{:010}", to_block + 1));
-        let query = "WITH RECURSIVE recursive_calls AS (
-                SELECT * FROM call WHERE ($1 OR name = ANY($2)) AND block_id IN (
-                    SELECT DISTINCT block_id FROM call
-                    WHERE ($1 OR name = ANY($2))
-                        AND block_id >= $3 AND ($4 IS null OR block_id < $4)
-                    GROUP BY block_id
-                    ORDER BY block_id
-                    LIMIT $5
-                )
-                UNION ALL
-                SELECT DISTINCT call.*
-                FROM call JOIN recursive_calls ON recursive_calls.parent_id = call.id
-            )
-            SELECT
+
+        let mut calls_ids = Vec::new();
+        let mut blocks = HashSet::new();
+        let mut offset: i64 = 0;
+        let query_limit: i64 = 5000;
+
+        let query = "SELECT id
+            FROM call
+            WHERE ($1 OR name = ANY($2))
+                AND block_id > $3 AND ($4 IS null OR block_id < $4)
+            ORDER BY block_id
+            OFFSET $5
+            LIMIT $6";
+        'outer: loop {
+            let result = sqlx::query_as::<_, (String,)>(query)
+                .bind(wildcard)
+                .bind(&names)
+                .bind(&from_block)
+                .bind(&to_block)
+                .bind(offset)
+                .bind(query_limit)
+                .fetch_all(&self.pool)
+                .await?;
+            if result.is_empty() {
+                break
+            } else {
+                for (id,) in result {
+                    let block_id = id.split('-').next().unwrap().to_string();
+                    if blocks.len() == limit as usize && !blocks.contains(&block_id) {
+                        break 'outer;
+                    }
+                    blocks.insert(block_id);
+                    calls_ids.push(id);
+                }
+                offset += query_limit;
+            }
+        }
+        let query = "SELECT
                 id,
                 parent_id,
                 block_id,
@@ -408,17 +433,44 @@ impl PostgresArchive {
                 error,
                 origin,
                 pos::int8
-            FROM recursive_calls
-            ORDER BY block_id";
-        let calls = sqlx::query_as::<_, Call>(query)
-            .bind(wildcard)
-            .bind(names)
-            .bind(from_block)
-            .bind(to_block)
-            .bind(limit)
+            FROM call WHERE id = ANY($1)";
+        let mut calls = sqlx::query_as::<_, Call>(query)
+            .bind(&calls_ids)
             .fetch_all(&self.pool)
-            .observe_duration("call")
             .await?;
+
+        let mut parents_ids: Vec<String> = calls.iter()
+            .filter_map(|call| call.parent_id.clone())
+            .collect();
+        parents_ids.sort();
+        parents_ids.dedup();
+        while !parents_ids.is_empty() {
+            let to_load: Vec<String> = parents_ids.iter()
+                .filter_map(|parent_id| {
+                    let loaded = calls.iter().any(|call| &call.id == parent_id);
+                    if loaded {
+                        None
+                    } else {
+                        Some(parent_id.clone())
+                    }
+                })
+                .collect();
+            if !to_load.is_empty() {
+                let mut parents = sqlx::query_as::<_, Call>(query)
+                    .bind(to_load)
+                    .fetch_all(&self.pool)
+                    .await?;
+                calls.append(&mut parents);
+            }
+            parents_ids = parents_ids.iter()
+                .filter_map(|parent_id| {
+                    let call = calls.iter().find(|call| &call.id == parent_id).unwrap();
+                    call.parent_id.clone()
+                })
+                .collect();
+            parents_ids.sort();
+            parents_ids.dedup();
+        }
         Ok(calls)
     }
 

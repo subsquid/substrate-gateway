@@ -94,27 +94,19 @@ impl QueryRoot {
         call_selections: Option<Vec<CallSelectionInput>>,
         include_all_blocks: Option<bool>,
     ) -> Result<Vec<Batch>> {
-        let events = self.unwrap_selections::<EventSelectionInput, EventSelection>(event_selections);
-        let calls = self.unwrap_selections::<CallSelectionInput, CallSelection>(call_selections);
-        let evm_logs = self.unwrap_selections::<EvmLogSelectionInput, EvmLogSelection>(evm_log_selections);
-        let eth_transactions = self.unwrap_selections::<EthTransactSelectionInput, EthTransactSelection>(eth_transact_selections);
-        let contracts_events = self.unwrap_selections::<ContractsEventSelectionInput, ContractsEventSelection>(contracts_event_selections);
-        let gear_messages_enqueued = self.unwrap_selections::<GearMessageEnqueuedSelectionInput, GearMessageEnqueuedSelection>(gear_message_enqueued_selections);
-        let gear_user_messages_sent = self.unwrap_selections::<GearUserMessageSentSelectionInput, GearUserMessageSentSelection>(gear_user_message_sent_selections);
-        let include_all_blocks = include_all_blocks.unwrap_or(false);
-
-        let options = BatchOptions::new()
-            .limit(limit)
-            .from_block(from_block)
-            .to_block(to_block)
-            .include_all_blocks(include_all_blocks)
-            .call_selections(calls)
-            .event_selections(events)
-            .evm_log_selections(evm_logs)
-            .eth_transact_selections(eth_transactions)
-            .contracts_event_selections(contracts_events)
-            .gear_message_enqueued_selections(gear_messages_enqueued)
-            .gear_user_message_sent_selections(gear_user_messages_sent);
+        let options = BatchOptions {
+            limit,
+            from_block,
+            to_block,
+            include_all_blocks: include_all_blocks.unwrap_or(false),
+            call_selections: self.unwrap_selections::<CallSelectionInput, CallSelection>(call_selections),
+            event_selections: self.unwrap_selections::<EventSelectionInput, EventSelection>(event_selections),
+            evm_log_selections: self.unwrap_selections::<EvmLogSelectionInput, EvmLogSelection>(evm_log_selections),
+            eth_transact_selections: self.unwrap_selections::<EthTransactSelectionInput, EthTransactSelection>(eth_transact_selections),
+            contracts_event_selections: self.unwrap_selections::<ContractsEventSelectionInput, ContractsEventSelection>(contracts_event_selections),
+            gear_message_enqueued_selections: self.unwrap_selections::<GearMessageEnqueuedSelectionInput, GearMessageEnqueuedSelection>(gear_message_enqueued_selections),
+            gear_user_message_sent_selections: self.unwrap_selections::<GearUserMessageSentSelectionInput, GearUserMessageSentSelection>(gear_user_message_sent_selections)
+        };
         let mut batch = self.archive.batch(&options).await?;
         batch_to_camel_case(&mut batch);
         Ok(batch)
@@ -141,8 +133,8 @@ impl QueryRoot {
 }
 
 impl QueryRoot {
-    fn unwrap_selections<T, U: From<T>>(&self, selections: Option<Vec<T>>) -> Option<Vec<U>> {
-        selections.map(|selections| {
+    fn unwrap_selections<T, U: From<T>>(&self, selections: Option<Vec<T>>) -> Vec<U> {
+        selections.map_or_else(Vec::new, |selections| {
             selections.into_iter()
                 .map(|selection| U::from(selection))
                 .collect()

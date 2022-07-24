@@ -1,4 +1,4 @@
-use crate::archive::ArchiveService;
+use crate::archive::{ArchiveService, BatchOptions};
 use crate::archive::selection::{
     EventSelection, CallSelection, EvmLogSelection,
     ContractsEventSelection, EthTransactSelection,
@@ -62,14 +62,8 @@ fn batch_to_camel_case(batch: &mut Vec<Batch>) {
 
 pub struct QueryRoot {
     pub archive: Box<dyn ArchiveService<
-        EvmLogSelection = EvmLogSelection,
-        EthTransactSelection = EthTransactSelection,
-        ContractsEventSelection = ContractsEventSelection,
-        GearMessageEnqueuedSelection = GearMessageEnqueuedSelection,
-        GearUserMessageSentSelection = GearUserMessageSentSelection,
-        EventSelection = EventSelection,
-        CallSelection = CallSelection,
         Batch = Batch,
+        BatchOptions = BatchOptions,
         Metadata = Metadata,
         Status = Status,
         Error = Error,
@@ -108,10 +102,20 @@ impl QueryRoot {
         let gear_messages_enqueued = self.unwrap_selections::<GearMessageEnqueuedSelectionInput, GearMessageEnqueuedSelection>(gear_message_enqueued_selections);
         let gear_user_messages_sent = self.unwrap_selections::<GearUserMessageSentSelectionInput, GearUserMessageSentSelection>(gear_user_message_sent_selections);
         let include_all_blocks = include_all_blocks.unwrap_or(false);
-        let mut batch = self.archive
-            .batch(limit, from_block, to_block, &evm_logs, &eth_transactions, &contracts_events,
-                   &gear_messages_enqueued, &gear_user_messages_sent, &events, &calls, include_all_blocks)
-            .await?;
+
+        let options = BatchOptions::new()
+            .limit(limit)
+            .from_block(from_block)
+            .to_block(to_block)
+            .include_all_blocks(include_all_blocks)
+            .call_selections(calls)
+            .event_selections(events)
+            .evm_log_selections(evm_logs)
+            .eth_transact_selections(eth_transactions)
+            .contracts_event_selections(contracts_events)
+            .gear_message_enqueued_selections(gear_messages_enqueued)
+            .gear_user_message_sent_selections(gear_user_messages_sent);
+        let mut batch = self.archive.batch(&options).await?;
         batch_to_camel_case(&mut batch);
         Ok(batch)
     }
@@ -137,8 +141,8 @@ impl QueryRoot {
 }
 
 impl QueryRoot {
-    fn unwrap_selections<T, U: From<T>>(&self, selections: Option<Vec<T>>) -> Vec<U> {
-        selections.map_or_else(Vec::new, |selections| {
+    fn unwrap_selections<T, U: From<T>>(&self, selections: Option<Vec<T>>) -> Option<Vec<U>> {
+        selections.map(|selections| {
             selections.into_iter()
                 .map(|selection| U::from(selection))
                 .collect()

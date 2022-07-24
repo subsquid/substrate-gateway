@@ -1,4 +1,4 @@
-use super::ArchiveService;
+use super::{ArchiveService, BatchOptions};
 use super::selection::{
     CallSelection, CallDataSelection, EventSelection,
     EvmLogSelection, ContractsEventSelection, EthTransactSelection,
@@ -18,6 +18,7 @@ mod utils;
 mod selection;
 mod fields;
 mod serializer;
+mod loader;
 
 pub struct PostgresArchive {
     pool: Pool<Postgres>,
@@ -25,32 +26,14 @@ pub struct PostgresArchive {
 
 #[async_trait::async_trait]
 impl ArchiveService for PostgresArchive {
-    type EvmLogSelection = EvmLogSelection;
-    type EthTransactSelection = EthTransactSelection;
-    type ContractsEventSelection = ContractsEventSelection;
-    type GearMessageEnqueuedSelection = GearMessageEnqueuedSelection;
-    type GearUserMessageSentSelection = GearUserMessageSentSelection;
-    type EventSelection = EventSelection;
-    type CallSelection = CallSelection;
     type Batch = Batch;
+    type BatchOptions = BatchOptions;
     type Metadata = Metadata;
     type Status = Status;
     type Error = Error;
 
-    async fn batch(
-        &self,
-        limit: i32,
-        from_block: i32,
-        to_block: Option<i32>,
-        evm_log_selections: &Vec<Self::EvmLogSelection>,
-        eth_transact_selections: &Vec<Self::EthTransactSelection>,
-        contracts_event_selections: &Vec<Self::ContractsEventSelection>,
-        gear_message_enqueued_selections: &Vec<Self::GearMessageEnqueuedSelection>,
-        gear_user_message_sent_selections: &Vec<Self::GearUserMessageSentSelection>,
-        event_selections: &Vec<Self::EventSelection>,
-        call_selections: &Vec<Self::CallSelection>,
-        include_all_blocks: bool
-    ) -> Result<Vec<Self::Batch>, Self::Error> {
+    async fn batch(&self, options: &BatchOptions) -> Result<Vec<Self::Batch>, Self::Error> {
+        options.loader()
         let mut calls = self.load_calls(limit, from_block, to_block, &call_selections).await?;
         let mut events = self.load_events(limit, from_block, to_block, &event_selections).await?;
         let mut evm_logs = self.get_evm_logs(limit, from_block, to_block, &evm_log_selections).await?;

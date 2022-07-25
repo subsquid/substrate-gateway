@@ -1,4 +1,4 @@
-use crate::archive::ArchiveService;
+use crate::archive::{ArchiveService, BatchOptions};
 use crate::archive::selection::{
     EventSelection, CallSelection, EvmLogSelection,
     ContractsEventSelection, EthTransactSelection,
@@ -62,14 +62,8 @@ fn batch_to_camel_case(batch: &mut Vec<Batch>) {
 
 pub struct QueryRoot {
     pub archive: Box<dyn ArchiveService<
-        EvmLogSelection = EvmLogSelection,
-        EthTransactSelection = EthTransactSelection,
-        ContractsEventSelection = ContractsEventSelection,
-        GearMessageEnqueuedSelection = GearMessageEnqueuedSelection,
-        GearUserMessageSentSelection = GearUserMessageSentSelection,
-        EventSelection = EventSelection,
-        CallSelection = CallSelection,
         Batch = Batch,
+        BatchOptions = BatchOptions,
         Metadata = Metadata,
         Status = Status,
         Error = Error,
@@ -100,18 +94,20 @@ impl QueryRoot {
         call_selections: Option<Vec<CallSelectionInput>>,
         include_all_blocks: Option<bool>,
     ) -> Result<Vec<Batch>> {
-        let events = self.unwrap_selections::<EventSelectionInput, EventSelection>(event_selections);
-        let calls = self.unwrap_selections::<CallSelectionInput, CallSelection>(call_selections);
-        let evm_logs = self.unwrap_selections::<EvmLogSelectionInput, EvmLogSelection>(evm_log_selections);
-        let eth_transactions = self.unwrap_selections::<EthTransactSelectionInput, EthTransactSelection>(eth_transact_selections);
-        let contracts_events = self.unwrap_selections::<ContractsEventSelectionInput, ContractsEventSelection>(contracts_event_selections);
-        let gear_messages_enqueued = self.unwrap_selections::<GearMessageEnqueuedSelectionInput, GearMessageEnqueuedSelection>(gear_message_enqueued_selections);
-        let gear_user_messages_sent = self.unwrap_selections::<GearUserMessageSentSelectionInput, GearUserMessageSentSelection>(gear_user_message_sent_selections);
-        let include_all_blocks = include_all_blocks.unwrap_or(false);
-        let mut batch = self.archive
-            .batch(limit, from_block, to_block, &evm_logs, &eth_transactions, &contracts_events,
-                   &gear_messages_enqueued, &gear_user_messages_sent, &events, &calls, include_all_blocks)
-            .await?;
+        let options = BatchOptions {
+            limit,
+            from_block,
+            to_block,
+            include_all_blocks: include_all_blocks.unwrap_or(false),
+            call_selections: self.unwrap_selections::<CallSelectionInput, CallSelection>(call_selections),
+            event_selections: self.unwrap_selections::<EventSelectionInput, EventSelection>(event_selections),
+            evm_log_selections: self.unwrap_selections::<EvmLogSelectionInput, EvmLogSelection>(evm_log_selections),
+            eth_transact_selections: self.unwrap_selections::<EthTransactSelectionInput, EthTransactSelection>(eth_transact_selections),
+            contracts_event_selections: self.unwrap_selections::<ContractsEventSelectionInput, ContractsEventSelection>(contracts_event_selections),
+            gear_message_enqueued_selections: self.unwrap_selections::<GearMessageEnqueuedSelectionInput, GearMessageEnqueuedSelection>(gear_message_enqueued_selections),
+            gear_user_message_sent_selections: self.unwrap_selections::<GearUserMessageSentSelectionInput, GearUserMessageSentSelection>(gear_user_message_sent_selections)
+        };
+        let mut batch = self.archive.batch(&options).await?;
         batch_to_camel_case(&mut batch);
         Ok(batch)
     }

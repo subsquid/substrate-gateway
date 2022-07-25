@@ -44,8 +44,15 @@ where
     forward_ready!(service);
 
     fn call(&self, req: ServiceRequest) -> Self::Future {
-        let uuid = Uuid::new_v4().to_string();
-        req.extensions_mut().insert(RequestId(uuid));
+        let request_id = if let Some(value) = req.headers().get("X-REQUEST-ID") {
+            value.to_str().map_or_else(
+                |_| Uuid::new_v4().to_string(),
+                |request_id| request_id.to_string()
+            )
+        } else {
+            Uuid::new_v4().to_string()
+        };
+        req.extensions_mut().insert(RequestId(request_id));
         let fut = self.service.call(req);
         Box::pin(async move {
             let res = fut.await?;
@@ -104,7 +111,6 @@ where
             info!(
                 x_squid_processor,
                 request_id = request_id.0.as_str(),
-                client_ip_address = res.request().connection_info().peer_addr(),
                 method = res.request().method().as_str(),
                 path = res.request().path(),
                 version = format!("{:?}", res.request().version()).as_str(),

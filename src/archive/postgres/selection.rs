@@ -54,12 +54,8 @@ impl ContractsEventSelection {
 
 impl GearMessageEnqueuedSelection {
     pub fn r#match(&self, event: &Event) -> bool {
-        if let Some(args) = &event.args {
-            if let Some(value) = args.get("destination") {
-                if let Some(destination) = value.as_str() {
-                    return destination == self.program
-                }
-            }
+        if let Some(contract) = &event.contract {
+            return contract == &self.program
         }
         false
     }
@@ -67,14 +63,8 @@ impl GearMessageEnqueuedSelection {
 
 impl GearUserMessageSentSelection {
     pub fn r#match(&self, event: &Event) -> bool {
-        if let Some(args) = &event.args {
-            if let Some(value) = args.get("message") {
-                if let Some(value) = value.get("source") {
-                    if let Some(source) = value.as_str() {
-                        return source == self.program
-                    }
-                }
-            }
+        if let Some(contract) = &event.contract {
+            return contract == &self.program
         }
         false
     }

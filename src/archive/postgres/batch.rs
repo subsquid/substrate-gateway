@@ -476,10 +476,12 @@ impl<'a> BatchLoader<'a> {
             return Ok(Vec::new())
         }
         let from_block = format!("{:010}", self.from_block);
-        let to_block = self.to_block.map_or("null".to_string(), |to_block| format!("{:010}", to_block + 1));
+        let to_block = self.to_block.map(|to_block| format!("{:010}", to_block + 1));
         let programs = self.gear_message_enqueued_selections.iter()
             .map(|selection| selection.program.clone())
             .collect::<Vec<String>>();
+        let id_query = Box::new(MessageEnqueuedIdQuery { programs, to_block, from_block });
+        let ids = self.load_ids(id_query).await?;
         let query = "SELECT
                 id,
                 block_id,
@@ -492,23 +494,12 @@ impl<'a> BatchLoader<'a> {
                 pos::int8,
                 contract
             FROM event
-            WHERE jsonb_extract_path_text(args, 'destination') = ANY($1)
-                AND name = 'Gear.MessageEnqueued' AND block_id IN (
-                    SELECT DISTINCT block_id FROM event
-                    WHERE jsonb_extract_path_text(args, 'destination') = ANY($1)
-                        AND block_id > $2 AND ($3 IS null OR block_id < $3)
-                        AND name = 'Gear.MessageEnqueued'
-                    ORDER BY block_id
-                    LIMIT $4
-                )";
+            WHERE id = ANY($1)";
         let events = sqlx::query_as::<_, Event>(query)
-            .bind(&programs)
-            .bind(from_block)
-            .bind(to_block)
-            .bind(self.limit)
+            .bind(&ids)
             .fetch_all(&self.pool)
             .await?;
-        return Ok(events)
+        Ok(events)
     }
 
     async fn load_messages_sent(&self) -> Result<Vec<Event>, Error> {
@@ -516,13 +507,12 @@ impl<'a> BatchLoader<'a> {
             return Ok(Vec::new())
         }
         let from_block = format!("{:010}", self.from_block);
-        let to_block = self.to_block.map_or(
-            "null".to_string(),
-            |to_block| format!("{:010}", to_block + 1)
-        );
+        let to_block = self.to_block.map(|to_block| format!("{:010}", to_block + 1));
         let programs = self.gear_user_message_sent_selections.iter()
             .map(|selection| selection.program.clone())
             .collect::<Vec<String>>();
+        let id_query = Box::new(MessageSentIdQuery { programs, to_block, from_block });
+        let ids = self.load_ids(id_query).await?;
         let query = "SELECT
                 id,
                 block_id,
@@ -535,23 +525,12 @@ impl<'a> BatchLoader<'a> {
                 pos::int8,
                 contract
             FROM event
-            WHERE jsonb_extract_path_text(args, 'message', 'source') = ANY($1)
-                AND name = 'Gear.UserMessageSent' AND block_id IN (
-                    SELECT DISTINCT block_id FROM event
-                    WHERE jsonb_extract_path_text(args, 'message', 'source') = ANY($1)
-                        AND block_id > $2 AND ($3 IS null OR block_id < $3)
-                        AND name = 'Gear.UserMessageSent'
-                    ORDER BY block_id
-                    LIMIT $4
-                )";
+            WHERE id = ANY($1)";
         let events = sqlx::query_as::<_, Event>(query)
-            .bind(&programs)
-            .bind(from_block)
-            .bind(to_block)
-            .bind(self.limit)
+            .bind(&ids)
             .fetch_all(&self.pool)
             .await?;
-        return Ok(events)
+        Ok(events)
     }
 
     async fn get_contracts_events(&self) -> Result<Vec<ContractsEvent>, Error> {
@@ -1018,6 +997,74 @@ impl IdQuery for CallIdQuery {
             .bind(limit)
             .fetch_all(pool)
             .observe_duration("call")
+            .await?;
+        Ok(result)
+    }
+}
+
+struct MessageEnqueuedIdQuery {
+    programs: Vec<String>,
+    from_block: String,
+    to_block: Option<String>,
+}
+
+#[async_trait::async_trait]
+impl IdQuery for MessageEnqueuedIdQuery {
+    async fn execute(
+        &self,
+        offset: i64,
+        limit: i64,
+        pool: &Pool<Postgres>
+    ) -> Result<Vec<(String,)>, Error> {
+        let query = "SELECT id
+            FROM event
+            WHERE name = 'Gear.MessageEnqueued' AND contract = ANY($1)
+                AND block_id > $2 AND ($3 IS null OR block_id < $3)
+            ORDER BY block_id
+            OFFSET $4
+            LIMIT $5";
+        let result = sqlx::query_as::<_, (String,)>(query)
+            .bind(&self.programs)
+            .bind(&self.from_block)
+            .bind(&self.to_block)
+            .bind(offset)
+            .bind(limit)
+            .fetch_all(pool)
+            .observe_duration("event")
+            .await?;
+        Ok(result)
+    }
+}
+
+struct MessageSentIdQuery {
+    programs: Vec<String>,
+    from_block: String,
+    to_block: Option<String>,
+}
+
+#[async_trait::async_trait]
+impl IdQuery for MessageSentIdQuery {
+    async fn execute(
+        &self,
+        offset: i64,
+        limit: i64,
+        pool: &Pool<Postgres>
+    ) -> Result<Vec<(String,)>, Error> {
+        let query = "SELECT id
+            FROM event
+            WHERE name = 'Gear.UserMessageSent' AND contract = ANY($1)
+                AND block_id > $2 AND ($3 IS null OR block_id < $3)
+            ORDER BY block_id
+            OFFSET $4
+            LIMIT $5";
+        let result = sqlx::query_as::<_, (String,)>(query)
+            .bind(&self.programs)
+            .bind(&self.from_block)
+            .bind(&self.to_block)
+            .bind(offset)
+            .bind(limit)
+            .fetch_all(pool)
+            .observe_duration("event")
             .await?;
         Ok(result)
     }

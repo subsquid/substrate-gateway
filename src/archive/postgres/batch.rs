@@ -318,42 +318,9 @@ impl<'a> BatchLoader<'a> {
             }
         }
 
-        let mut calls_ids = Vec::new();
-        let mut blocks = HashSet::new();
-        let mut offset: i64 = 0;
-        let query_limit: i64 = 5000;
+        let id_query = Box::new(CallIdQuery { wildcard, names, from_block, to_block });
+        let ids = self.load_ids(id_query).await?;
 
-        let query = "SELECT id
-            FROM call
-            WHERE ($1 OR name = ANY($2))
-                AND block_id > $3 AND ($4 IS null OR block_id < $4)
-            ORDER BY block_id
-            OFFSET $5
-            LIMIT $6";
-        'outer: loop {
-            let result = sqlx::query_as::<_, (String,)>(query)
-                .bind(wildcard)
-                .bind(&names)
-                .bind(&from_block)
-                .bind(&to_block)
-                .bind(offset)
-                .bind(query_limit)
-                .fetch_all(&self.pool)
-                .await?;
-            if result.is_empty() {
-                break
-            } else {
-                for (id,) in result {
-                    let block_id = id.split('-').next().unwrap().to_string();
-                    if blocks.len() == self.limit as usize && !blocks.contains(&block_id) {
-                        break 'outer;
-                    }
-                    blocks.insert(block_id);
-                    calls_ids.push(id);
-                }
-                offset += query_limit;
-            }
-        }
         let query = "SELECT
                 id,
                 parent_id,
@@ -367,8 +334,9 @@ impl<'a> BatchLoader<'a> {
                 pos::int8
             FROM call WHERE id = ANY($1)";
         let mut calls = sqlx::query_as::<_, Call>(query)
-            .bind(&calls_ids)
+            .bind(&ids)
             .fetch_all(&self.pool)
+            .observe_duration("call")
             .await?;
 
         let mut parents_ids: Vec<String> = calls.iter()
@@ -391,6 +359,7 @@ impl<'a> BatchLoader<'a> {
                 let mut parents = sqlx::query_as::<_, Call>(query)
                     .bind(to_load)
                     .fetch_all(&self.pool)
+                    .observe_duration("call")
                     .await?;
                 calls.append(&mut parents);
             }
@@ -451,10 +420,10 @@ impl<'a> BatchLoader<'a> {
             }
         }
         let from_block = format!("{:010}", self.from_block);
-        let to_block = self.to_block.map_or(
-            "null".to_string(),
-            |to_block| format!("{:010}", to_block + 1)
-        );
+        let to_block = self.to_block.map(|to_block| format!("{:010}", to_block + 1));
+
+        let id_query = Box::new(EventIdQuery { wildcard, names, from_block, to_block });
+        let ids = self.load_ids(id_query).await?;
         let query = "SELECT
                 id,
                 block_id,
@@ -467,24 +436,39 @@ impl<'a> BatchLoader<'a> {
                 pos::int8,
                 contract
             FROM event
-            WHERE ($1 OR name = ANY($2)) AND block_id IN (
-                SELECT DISTINCT block_id FROM event
-                WHERE ($1 OR name = ANY($2))
-                    AND block_id >= $3 AND ($4 IS null OR block_id < $4)
-                GROUP BY block_id
-                ORDER BY block_id
-                LIMIT $5
-            )";
-        let events = sqlx::query_as::<_, Event>(&query)
-            .bind(wildcard)
-            .bind(names)
-            .bind(from_block)
-            .bind(to_block)
-            .bind(self.limit)
+            WHERE id = ANY($1)";
+        let events = sqlx::query_as::<_, Event>(query)
+            .bind(&ids)
             .fetch_all(&self.pool)
             .observe_duration("event")
             .await?;
         Ok(events)
+    }
+
+    async fn load_ids(&self, query: Box<dyn IdQuery + Send>) -> Result<Vec<String>, Error> {
+        let mut ids = Vec::new();
+        let mut blocks = HashSet::new();
+        let mut offset: i64 = 0;
+        let limit: i64 = 5000;
+
+        'outer: loop {
+            let fut = query.execute(offset, limit, &self.pool);
+            let result = fut.await?;
+            if result.is_empty() {
+                break
+            } else {
+                for (id,) in result {
+                    let block_id = id.split('-').next().unwrap().to_string();
+                    if blocks.len() == self.limit as usize && !blocks.contains(&block_id) {
+                        break 'outer;
+                    }
+                    blocks.insert(block_id);
+                    ids.push(id);
+                }
+                offset += limit;
+            }
+        }
+        Ok(ids)
     }
 
     async fn load_messages_enqueued(&self) -> Result<Vec<Event>, Error> {
@@ -953,5 +937,88 @@ impl BatchOptions {
             gear_message_enqueued_selections: &self.gear_message_enqueued_selections,
             gear_user_message_sent_selections: &self.gear_user_message_sent_selections,
         }
+    }
+}
+
+
+#[async_trait::async_trait]
+trait IdQuery {
+    async fn execute(
+        &self,
+        offset: i64,
+        limit: i64,
+        pool: &Pool<Postgres>
+    ) -> Result<Vec<(String,)>, Error>;
+}
+
+struct EventIdQuery {
+    wildcard: bool,
+    names: Vec<String>,
+    from_block: String,
+    to_block: Option<String>,
+}
+
+#[async_trait::async_trait]
+impl IdQuery for EventIdQuery {
+    async fn execute(
+        &self,
+        offset: i64,
+        limit: i64,
+        pool: &Pool<Postgres>
+    ) -> Result<Vec<(String,)>, Error> {
+        let query = "SELECT id
+            FROM event
+            WHERE ($1 OR name = ANY($2))
+                AND block_id > $3 AND ($4 IS null OR block_id < $4)
+            ORDER BY block_id
+            OFFSET $5
+            LIMIT $6";
+        let result = sqlx::query_as::<_, (String,)>(query)
+            .bind(self.wildcard)
+            .bind(&self.names)
+            .bind(&self.from_block)
+            .bind(&self.to_block)
+            .bind(offset)
+            .bind(limit)
+            .fetch_all(pool)
+            .observe_duration("event")
+            .await?;
+        Ok(result)
+    }
+}
+
+struct CallIdQuery {
+    wildcard: bool,
+    names: Vec<String>,
+    from_block: String,
+    to_block: Option<String>,
+}
+
+#[async_trait::async_trait]
+impl IdQuery for CallIdQuery {
+    async fn execute(
+        &self,
+        offset: i64,
+        limit: i64,
+        pool: &Pool<Postgres>
+    ) -> Result<Vec<(String,)>, Error> {
+        let query = "SELECT id
+            FROM call
+            WHERE ($1 OR name = ANY($2))
+                AND block_id > $3 AND ($4 IS null OR block_id < $4)
+            ORDER BY block_id
+            OFFSET $5
+            LIMIT $6";
+        let result = sqlx::query_as::<_, (String,)>(query)
+            .bind(self.wildcard)
+            .bind(&self.names)
+            .bind(&self.from_block)
+            .bind(&self.to_block)
+            .bind(offset)
+            .bind(limit)
+            .fetch_all(pool)
+            .observe_duration("call")
+            .await?;
+        Ok(result)
     }
 }

@@ -4,7 +4,7 @@ use std::time::Duration;
 use sqlx::postgres::PgPoolOptions;
 use actix_web::rt::{Runtime, spawn};
 use actix_web::rt::time::sleep;
-use substrate_gateway::ArchiveGateway;
+use substrate_gateway::SubstrateGateway;
 use serde::Deserialize;
 use serde_json::Value;
 
@@ -22,7 +22,7 @@ pub fn launch_gateway() {
                         .await
                         .unwrap();
                     spawn(async {
-                        ArchiveGateway::new(pool)
+                        SubstrateGateway::new(pool)
                             .evm_support(true)
                             .contracts_support(true)
                             .run()

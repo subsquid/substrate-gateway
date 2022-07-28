@@ -1,7 +1,7 @@
 use std::time::Duration;
 use clap::Parser;
 use sqlx::postgres::PgPoolOptions;
-use substrate_gateway::ArchiveGateway;
+use substrate_gateway::SubstrateGateway;
 
 mod logger;
 
@@ -41,7 +41,7 @@ async fn main() -> std::io::Result<()> {
         .connect_timeout(Duration::from_secs(5))
         .connect_lazy(&args.database_url)
         .unwrap();
-    ArchiveGateway::new(pool)
+    SubstrateGateway::new(pool)
         .evm_support(args.evm_support)
         .contracts_support(args.contracts_support)
         .gear_support(args.gear_support)

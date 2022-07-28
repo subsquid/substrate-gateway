@@ -11,16 +11,16 @@ mod metrics;
 mod error;
 mod archive;
 
-pub struct ArchiveGateway {
+pub struct SubstrateGateway {
     pool: Pool<Postgres>,
     evm_support: bool,
     contracts_support: bool,
     gear_support: bool,
 }
 
-impl ArchiveGateway {
+impl SubstrateGateway {
     pub fn new(pool: Pool<Postgres>) -> Self {
-        ArchiveGateway {
+        SubstrateGateway {
             pool,
             evm_support: false,
             contracts_support: false,

@@ -1,6 +1,7 @@
 use super::selection::{
     CallSelection, EventSelection, EvmLogSelection, EthTransactSelection,
     ContractsEventSelection, GearMessageEnqueuedSelection, GearUserMessageSentSelection,
+    EvmExecutedSelection,
 };
 
 pub struct BatchOptions {
@@ -15,4 +16,5 @@ pub struct BatchOptions {
     pub contracts_event_selections: Vec<ContractsEventSelection>,
     pub gear_message_enqueued_selections: Vec<GearMessageEnqueuedSelection>,
     pub gear_user_message_sent_selections: Vec<GearUserMessageSentSelection>,
+    pub evm_executed_selections: Vec<EvmExecutedSelection>,
 }

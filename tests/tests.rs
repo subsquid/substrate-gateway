@@ -20,9 +20,9 @@ async fn test_parent_call_loaded() {
             }]
         })).await;
         let requested_call = batch.calls.iter()
-            .find(|call| call.id == "0000650677-000003-0f08a-000001".to_string());
+            .find(|call| call.id == "0000650677-000003-0f08a-000001");
         let parent_call = batch.calls.iter()
-            .find(|call| call.id == "0000650677-000003-0f08a".to_string());
+            .find(|call| call.id == "0000650677-000003-0f08a");
         assert!(requested_call.is_some());
         assert!(parent_call.is_some());
     }
@@ -45,9 +45,9 @@ async fn test_parent_call_skipped() {
         }]
     })).await;
     let requested_call = batch.calls.iter()
-        .find(|call| call.id == "0000650677-000003-0f08a-000001".to_string());
+        .find(|call| call.id == "0000650677-000003-0f08a-000001");
     let parent_call = batch.calls.iter()
-        .find(|call| call.id == "0000650677-000003-0f08a".to_string());
+        .find(|call| call.id == "0000650677-000003-0f08a");
     assert!(requested_call.is_some());
     assert!(parent_call.is_none());
 }
@@ -69,7 +69,7 @@ async fn test_event_loads_related_call() {
             "events": json!([selection])
         })).await;
         let call = &batch.calls[0];
-        assert!(call.id == "0000000734-000001-251d1".to_string());
+        assert!(call.id == "0000000734-000001-251d1");
     }
 }
 
@@ -90,7 +90,7 @@ async fn test_evm_log_has_tx_hash() {
         }]
     })).await;
     let log = &batch.events[0];
-    assert!(log.id == "0000569006-000084-5e412".to_string());
+    assert!(log.id == "0000569006-000084-5e412");
     assert!(log.evmTxHash == Some("0x8eafe131eee90e0dfb07d6df46b1aea737834936968da31f807af566a59148b9".to_string()));
 }
 
@@ -105,7 +105,7 @@ async fn test_ethereum_transactions() {
         }]
     })).await;
     let call = &batch.calls[0];
-    assert!(call.id == "0000569006-000018-5e412".to_string());
+    assert!(call.id == "0000569006-000018-5e412");
 }
 
 #[actix_web::test]
@@ -124,7 +124,7 @@ async fn test_contracts_events() {
         }]
     })).await;
     let event = &batch.events[0];
-    assert!(event.id == "0000000734-000004-251d1".to_string());
+    assert!(event.id == "0000000734-000004-251d1");
 }
 
 #[actix_web::test]
@@ -138,11 +138,11 @@ async fn test_wildcard_search() {
         "events": [{"name": "*"}],
     })).await;
     let event = &batch.events[0];
-    assert!(event.id == "0000000734-000004-251d1".to_string());
-    assert!(event.name == "Contracts.ContractEmitted".to_string());
+    assert!(event.id == "0000000734-000004-251d1");
+    assert!(event.name == "Contracts.ContractEmitted");
     let call = &batch.calls[0];
-    assert!(call.id == "0000000734-000001-251d1".to_string());
-    assert!(call.name == "Contracts.call".to_string());
+    assert!(call.id == "0000000734-000001-251d1");
+    assert!(call.name == "Contracts.call");
 }
 
 #[actix_web::test]
@@ -154,8 +154,8 @@ async fn test_contracts_wildcard_search() {
         "contractsEvents": [{"contract": "*"}],
     })).await;
     let event = &batch.events[0];
-    assert!(event.id == "0000000734-000004-251d1".to_string());
-    assert!(event.name == "Contracts.ContractEmitted".to_string());
+    assert!(event.id == "0000000734-000004-251d1");
+    assert!(event.name == "Contracts.ContractEmitted");
 }
 
 #[actix_web::test]
@@ -167,8 +167,8 @@ async fn test_evm_wildcard_search() {
         "evmLogs": [{"contract": "*"}],
     })).await;
     let event = &batch.events[0];
-    assert!(event.id == "0000569006-000084-5e412".to_string());
-    assert!(event.name == "EVM.Log".to_string());
+    assert!(event.id == "0000569006-000084-5e412");
+    assert!(event.name == "EVM.Log");
 }
 
 #[actix_web::test]
@@ -180,7 +180,7 @@ async fn test_gear_messages_enqueued() {
         "gearMessagesEnqueued": [{"program": "0x5466a0b28225bcc8e33f6bdde7a95f5fcf81bfd94d70ca099d0a8bae230dbaa1"}],
     })).await;
     let event = &batch.events[0];
-    assert!(event.id == "0000000006-000003-7ec94".to_string());
+    assert!(event.id == "0000000006-000003-7ec94");
     assert!(event.name == "Gear.MessageEnqueued");
 }
 
@@ -193,6 +193,45 @@ async fn test_gear_user_sent_messages() {
         "gearUserMessagesSent": [{"program": "0x5466a0b28225bcc8e33f6bdde7a95f5fcf81bfd94d70ca099d0a8bae230dbaa1"}],
     })).await;
     let event = &batch.events[0];
-    assert!(event.id == "0000000006-000007-7ec94".to_string());
+    assert!(event.id == "0000000006-000007-7ec94");
     assert!(event.name == "Gear.UserMessageSent");
+}
+
+#[actix_web::test]
+async fn test_evm_executed() {
+    launch_gateway();
+    let client = Client::new();
+    let batch = client.batch(json!({
+        "limit": 1,
+        "evmExecuted": [{"contract": "0x0000000000000000000100000000000000000080"}],
+    })).await;
+    let event = &batch.events[0];
+    assert!(event.id == "0001818666-000011-af202");
+    assert!(event.name == "EVM.Executed");
+}
+
+#[actix_web::test]
+async fn test_evm_executed_topics() {
+    launch_gateway();
+    let client = Client::new();
+    let topics_data = [
+        (json!([]), true),
+        (json!([["0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef"]]), true),
+        (json!([["unexisted topic"]]), false),
+    ];
+    for (topics, has_result) in topics_data {
+        let batch = client.batch_optional(json!({
+            "limit": 1,
+            "evmExecuted": [{
+                "contract": "0x0000000000000000000100000000000000000080",
+                "filter": topics,
+            }],
+        })).await;
+        assert!(batch.is_some() == has_result);
+        if let Some(batch) = batch {
+            let event = &batch.events[0];
+            assert!(event.id == "0001818666-000011-af202");
+            assert!(event.name == "EVM.Executed");
+        }
+    }
 }

@@ -1,7 +1,7 @@
 use crate::archive::selection::{
     EventDataSelection, CallDataSelection, EventSelection, CallSelection,
     EvmLogDataSelection, EvmLogSelection, ContractsEventSelection, EthTransactSelection,
-    GearMessageEnqueuedSelection, GearUserMessageSentSelection,
+    GearMessageEnqueuedSelection, GearUserMessageSentSelection, EvmExecutedSelection,
 };
 use crate::archive::fields::{ParentCallFields, CallFields, ExtrinsicFields, EventFields, EvmLogFields};
 use async_graphql::InputObject;
@@ -392,6 +392,30 @@ impl From<GearUserMessageSentSelectionInput> for GearUserMessageSentSelection {
             }, |data| {
                 EventDataSelection::from(data)
             })
+        }
+    }
+}
+
+
+#[derive(InputObject, Clone)]
+#[graphql(name = "EvmExecutedSelection")]
+pub struct EvmExecutedSelectionInput {
+    pub contract: String,
+    pub filter: Option<Vec<Vec<String>>>,
+    pub data: Option<EventDataSelectionInput>,
+}
+
+
+impl From<EvmExecutedSelectionInput> for EvmExecutedSelection {
+    fn from(selection: EvmExecutedSelectionInput) -> Self {
+        EvmExecutedSelection {
+            contract: selection.contract,
+            filter: selection.filter.unwrap_or_default(),
+            data: selection.data.map_or_else(|| {
+                EventDataSelection::new(true)
+            }, |data| {
+                EventDataSelection::from(data)
+            }),
         }
     }
 }

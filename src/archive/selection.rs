@@ -102,3 +102,10 @@ pub struct GearUserMessageSentSelection {
     pub program: String,
     pub data: EventDataSelection,
 }
+
+#[derive(Debug)]
+pub struct EvmExecutedSelection {
+    pub contract: String,
+    pub filter: Vec<Vec<String>>,
+    pub data: EventDataSelection,
+}

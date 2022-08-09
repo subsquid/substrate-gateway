@@ -62,3 +62,15 @@ CREATE TABLE event (
     pos integer not null,
     contract varchar
 );
+
+
+CREATE TABLE evm_log (
+    id char(17) primary key,
+    block_id char(16) not null references block on delete cascade,
+    event_id char(23) not null references event on delete cascade,
+    contract varchar not null,
+    topic0 varchar,
+    topic1 varchar,
+    topic2 varchar,
+    topic3 varchar
+);

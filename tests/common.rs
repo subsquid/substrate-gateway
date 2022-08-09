@@ -25,6 +25,8 @@ pub fn launch_gateway() {
                         SubstrateGateway::new(pool)
                             .evm_support(true)
                             .contracts_support(true)
+                            .gear_support(true)
+                            .evm_plus_support(true)
                             .run()
                             .await
                     });
@@ -105,6 +107,7 @@ fn args_to_string(args: &Value, root: bool) -> String {
 pub struct Client(reqwest::Client);
 
 impl Client {
+    #[allow(clippy::new_without_default)]
     pub fn new() -> Self {
         Client(reqwest::Client::new())
     }
@@ -122,5 +125,20 @@ impl Client {
             .await
             .unwrap();
         parsed.data.batch.remove(0)
+    }
+
+    pub async fn batch_optional(&self, args: Value) -> Option<Batch> {
+        let json = serde_json::json!({
+            "query": format!("{{ batch({}) {{ calls, events, extrinsics }} }}", args_to_string(&args, true)),
+        });
+        let response = self.0.post("http://0.0.0.0:8000/graphql")
+            .json(&json)
+            .send()
+            .await
+            .unwrap();
+        let parsed = response.json::<GatewayResponse<BatchResponse>>()
+            .await
+            .unwrap();
+        parsed.data.batch.into_iter().next()
     }
 }

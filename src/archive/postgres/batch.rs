@@ -31,6 +31,20 @@ pub struct BatchLoader<'a> {
     evm_executed_selections: &'a Vec<EvmExecutedSelection>,
 }
 
+const EVENTS_BY_ID_QUERY: &str = "SELECT
+        id,
+        block_id,
+        index_in_block::int8,
+        phase,
+        extrinsic_id,
+        call_id,
+        name,
+        args,
+        pos::int8,
+        contract
+    FROM event
+    WHERE id = ANY($1::char(23)[])";
+
 impl<'a> BatchLoader<'a> {
     pub async fn load(&self) -> Result<Vec<Batch>, Error> {
         let mut calls = self.load_calls().await?;
@@ -346,7 +360,7 @@ impl<'a> BatchLoader<'a> {
                 error,
                 origin,
                 pos::int8
-            FROM call WHERE id = ANY($1)";
+            FROM call WHERE id = ANY($1::varchar(30)[])";
         let mut calls = sqlx::query_as::<_, Call>(query)
             .bind(&ids)
             .fetch_all(&self.pool)
@@ -390,12 +404,8 @@ impl<'a> BatchLoader<'a> {
     }
 
     async fn load_calls_by_ids(&self, ids: &Vec<String>) -> Result<Vec<Call>, Error> {
-        // i inject ids into the query otherwise it executes so long
-        let ids = ids.iter().map(|id| format!("'{}'", id))
-            .collect::<Vec<String>>()
-            .join(", ");
-        let query = format!("WITH RECURSIVE recursive_call AS (
-                SELECT * FROM call WHERE id IN ({})
+        let query = "WITH RECURSIVE recursive_call AS (
+                SELECT * FROM call WHERE id = ANY($1::varchar(30)[])
                 UNION ALL
                 SELECT DISTINCT ON (call.id) call.*
                 FROM call JOIN recursive_call ON recursive_call.parent_id = call.id
@@ -412,8 +422,9 @@ impl<'a> BatchLoader<'a> {
                 origin,
                 pos::int8
             FROM recursive_call
-            ORDER BY block_id", ids);
-        let calls = sqlx::query_as::<_, Call>(&query)
+            ORDER BY block_id";
+        let calls = sqlx::query_as::<_, Call>(query)
+            .bind(ids)
             .fetch_all(&self.pool)
             .observe_duration("call")
             .await?;
@@ -438,20 +449,7 @@ impl<'a> BatchLoader<'a> {
 
         let id_query = Box::new(EventIdQuery { wildcard, names, from_block, to_block });
         let ids = self.load_ids(id_query).await?;
-        let query = "SELECT
-                id,
-                block_id,
-                index_in_block::int8,
-                phase,
-                extrinsic_id,
-                call_id,
-                name,
-                args,
-                pos::int8,
-                contract
-            FROM event
-            WHERE id = ANY($1)";
-        let events = sqlx::query_as::<_, Event>(query)
+        let events = sqlx::query_as::<_, Event>(EVENTS_BY_ID_QUERY)
             .bind(&ids)
             .fetch_all(&self.pool)
             .observe_duration("event")
@@ -496,20 +494,7 @@ impl<'a> BatchLoader<'a> {
             .collect::<Vec<String>>();
         let id_query = Box::new(MessageEnqueuedIdQuery { programs, to_block, from_block });
         let ids = self.load_ids(id_query).await?;
-        let query = "SELECT
-                id,
-                block_id,
-                index_in_block::int8,
-                phase,
-                extrinsic_id,
-                call_id,
-                name,
-                args,
-                pos::int8,
-                contract
-            FROM event
-            WHERE id = ANY($1)";
-        let events = sqlx::query_as::<_, Event>(query)
+        let events = sqlx::query_as::<_, Event>(EVENTS_BY_ID_QUERY)
             .bind(&ids)
             .fetch_all(&self.pool)
             .await?;
@@ -527,20 +512,7 @@ impl<'a> BatchLoader<'a> {
             .collect::<Vec<String>>();
         let id_query = Box::new(MessageSentIdQuery { programs, to_block, from_block });
         let ids = self.load_ids(id_query).await?;
-        let query = "SELECT
-                id,
-                block_id,
-                index_in_block::int8,
-                phase,
-                extrinsic_id,
-                call_id,
-                name,
-                args,
-                pos::int8,
-                contract
-            FROM event
-            WHERE id = ANY($1)";
-        let events = sqlx::query_as::<_, Event>(query)
+        let events = sqlx::query_as::<_, Event>(EVENTS_BY_ID_QUERY)
             .bind(&ids)
             .fetch_all(&self.pool)
             .await?;
@@ -616,20 +588,7 @@ impl<'a> BatchLoader<'a> {
             ids.append(&mut selection_ids);
         }
         ids.dedup();
-        let query = "SELECT
-                id,
-                block_id,
-                index_in_block::int8,
-                phase,
-                extrinsic_id,
-                call_id,
-                name,
-                args,
-                pos::int8,
-                contract
-            FROM event
-            WHERE id = ANY($1)";
-        let events = sqlx::query_as::<_, Event>(query)
+        let events = sqlx::query_as::<_, Event>(EVENTS_BY_ID_QUERY)
             .bind(&ids)
             .fetch_all(&self.pool)
             .observe_duration("event")
@@ -887,8 +846,8 @@ impl<'a> BatchLoader<'a> {
                 spec_id,
                 validator
             FROM block
-            WHERE id = ANY($1)";
-        let blocks = sqlx::query_as::<_, BlockHeader>(&query)
+            WHERE id = ANY($1::char(16)[])";
+        let blocks = sqlx::query_as::<_, BlockHeader>(query)
             .bind(ids)
             .fetch_all(&self.pool)
             .observe_duration("block")
@@ -933,8 +892,8 @@ impl<'a> BatchLoader<'a> {
                 tip,
                 hash,
                 pos::int8
-            FROM extrinsic WHERE id = ANY($1)";
-        let extrinsics = sqlx::query_as::<_, Extrinsic>(&query)
+            FROM extrinsic WHERE id = ANY($1::char(23)[])";
+        let extrinsics = sqlx::query_as::<_, Extrinsic>(query)
             .bind(ids)
             .fetch_all(&self.pool)
             .observe_duration("extrinsic")

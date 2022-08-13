@@ -3,8 +3,8 @@ use sqlx::{Pool, Arguments};
 use sqlx::postgres::{PgArguments, Postgres};
 use crate::entities::{Batch, Event, BlockHeader, EvmLog, ContractsEvent, Call, Extrinsic};
 use crate::error::Error;
-use crate::archive::fields::{ExtrinsicFields, EventFields, CallFields};
-use crate::archive::selection::{
+use crate::fields::{ExtrinsicFields, EventFields, CallFields};
+use crate::selection::{
     CallSelection, CallDataSelection, EventSelection,
     EvmLogSelection, ContractsEventSelection, EthTransactSelection,
     GearMessageEnqueuedSelection, GearUserMessageSentSelection,

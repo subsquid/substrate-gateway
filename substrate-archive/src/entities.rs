@@ -8,6 +8,8 @@ pub struct BlockHeader {
     pub height: i64,
     pub hash: String,
     pub parent_hash: String,
+    pub state_root: String,
+    pub extrinsics_root: String,
     pub timestamp: DateTime<Utc>,
     pub spec_id: String,
     pub validator: Option<String>,

@@ -13,6 +13,8 @@ CREATE TABLE block (
     height integer not null,
     hash char(66) not null,
     parent_hash char(66) not null,
+    state_root char(66) not null,
+    extrinsics_root char(66) not null,
     timestamp timestamptz not null,
     spec_id text not null,
     validator varchar

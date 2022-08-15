@@ -1,9 +1,9 @@
-use crate::archive::selection::{
+use substrate_archive::selection::{
     EventDataSelection, CallDataSelection, EventSelection, CallSelection,
     EvmLogDataSelection, EvmLogSelection, ContractsEventSelection, EthTransactSelection,
     GearMessageEnqueuedSelection, GearUserMessageSentSelection, EvmExecutedSelection,
 };
-use crate::archive::fields::{ParentCallFields, CallFields, ExtrinsicFields, EventFields, EvmLogFields};
+use substrate_archive::fields::{ParentCallFields, CallFields, ExtrinsicFields, EventFields, EvmLogFields};
 use async_graphql::InputObject;
 
 #[derive(InputObject, Clone, Debug)]
@@ -18,8 +18,8 @@ pub struct ParentCallFieldsInput {
 }
 
 
-impl ParentCallFields {
-    pub fn from(fields: ParentCallFieldsInput) -> Self {
+impl From<ParentCallFieldsInput> for ParentCallFields {
+    fn from(fields: ParentCallFieldsInput) -> Self {
         let _all = fields._all.unwrap_or(false);
         ParentCallFields {
             _all,
@@ -44,8 +44,8 @@ pub struct CallFieldsInput {
 }
 
 
-impl CallFields {
-    pub fn from(fields: CallFieldsInput) -> Self {
+impl From<CallFieldsInput> for CallFields {
+    fn from(fields: CallFieldsInput) -> Self {
         let _all = fields._all.unwrap_or(false);
         CallFields {
             _all,
@@ -53,7 +53,7 @@ impl CallFields {
             origin: _all || fields.origin.unwrap_or(false),
             args: _all || fields.args.unwrap_or(false),
             parent: fields.parent.map_or_else(|| {
-                ParentCallFields::new(_all || false)
+                ParentCallFields::new(_all)
             }, |parent| {
                 ParentCallFields::from(parent)
             })
@@ -79,8 +79,8 @@ pub struct ExtrinsicFieldsInput {
 }
 
 
-impl ExtrinsicFields {
-    pub fn from(fields: ExtrinsicFieldsInput) -> Self {
+impl From<ExtrinsicFieldsInput> for ExtrinsicFields {
+    fn from(fields: ExtrinsicFieldsInput) -> Self {
         let _all = fields._all.unwrap_or(false);
         ExtrinsicFields {
             _all,
@@ -91,7 +91,7 @@ impl ExtrinsicFields {
             error: _all || fields.error.unwrap_or(false),
             hash: _all || fields.hash.unwrap_or(false),
             call: fields.call.map_or_else(|| {
-                CallFields::new(_all || false)
+                CallFields::new(_all)
             }, |call| {
                 CallFields::from(call)
             }),
@@ -115,20 +115,20 @@ pub struct EventFieldsInput {
 }
 
 
-impl EventFields {
-    pub fn from(fields: EventFieldsInput) -> Self {
+impl From<EventFieldsInput> for EventFields {
+    fn from(fields: EventFieldsInput) -> Self {
         let _all = fields._all.unwrap_or(false);
         EventFields {
             _all,
             index_in_block: _all || fields.index_in_block.unwrap_or(false),
             phase: _all || fields.phase.unwrap_or(false),
             extrinsic: fields.extrinsic.map_or_else(|| {
-                ExtrinsicFields::new(_all || false)
+                ExtrinsicFields::new(_all)
             }, |extrinsic| {
                 ExtrinsicFields::from(extrinsic)
             }),
             call: fields.call.map_or_else(|| {
-                CallFields::new(_all || false)
+                CallFields::new(_all)
             }, |call| {
                 CallFields::from(call)
             }),
@@ -152,20 +152,20 @@ pub struct EvmLogFieldsInput {
 }
 
 
-impl EvmLogFields {
-    pub fn from(fields: EvmLogFieldsInput) -> Self {
+impl From<EvmLogFieldsInput> for EvmLogFields {
+    fn from(fields: EvmLogFieldsInput) -> Self {
         let _all = fields._all.unwrap_or(false);
         EvmLogFields {
             _all,
             index_in_block: _all || fields.index_in_block.unwrap_or(false),
             phase: _all || fields.phase.unwrap_or(false),
             extrinsic: fields.extrinsic.map_or_else(|| {
-                ExtrinsicFields::new(_all || false)
+                ExtrinsicFields::new(_all)
             }, |extrinsic| {
                 ExtrinsicFields::from(extrinsic)
             }),
             call: fields.call.map_or_else(|| {
-                CallFields::new(_all || false)
+                CallFields::new(_all)
             }, |call| {
                 CallFields::from(call)
             }),
@@ -183,8 +183,8 @@ pub struct EventDataSelectionInput {
 }
 
 
-impl EventDataSelection {
-    pub fn from(data: EventDataSelectionInput) -> Self {
+impl From<EventDataSelectionInput> for EventDataSelection {
+    fn from(data: EventDataSelectionInput) -> Self {
         EventDataSelection {
             event: data.event.map_or_else(|| {
                 EventFields::new(true)
@@ -204,8 +204,8 @@ pub struct CallDataSelectionInput {
 }
 
 
-impl CallDataSelection {
-    pub fn from(data: CallDataSelectionInput) -> Self {
+impl From<CallDataSelectionInput> for CallDataSelection {
+    fn from(data: CallDataSelectionInput) -> Self {
         CallDataSelection {
             call: data.call.map_or_else(|| {
                 CallFields::new(true)

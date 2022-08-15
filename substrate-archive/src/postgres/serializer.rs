@@ -1,5 +1,5 @@
-use crate::archive::fields::{ExtrinsicFields, EventFields};
-use crate::archive::selection::CallDataSelection;
+use crate::fields::{ExtrinsicFields, EventFields};
+use crate::selection::CallDataSelection;
 use crate::entities::{Call, Event, Extrinsic};
 use serde::ser::SerializeStruct;
 

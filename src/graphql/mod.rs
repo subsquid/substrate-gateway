@@ -1,13 +1,12 @@
-use crate::archive::{ArchiveService, BatchOptions};
-use crate::archive::selection::{
+use substrate_archive::{ArchiveService, BatchOptions};
+use substrate_archive::selection::{
     EventSelection, CallSelection, EvmLogSelection,
     ContractsEventSelection, EthTransactSelection,
     GearMessageEnqueuedSelection, GearUserMessageSentSelection,
     EvmExecutedSelection,
 };
-use crate::error::Error;
-use crate::entities::{Batch, Metadata, Status};
-use crate::metrics::DB_TIME_SPENT_SECONDS;
+use substrate_archive::error::Error;
+use substrate_archive::entities::{Batch, Metadata, Status};
 use serde_json::{Map, Value};
 use convert_case::{Casing, Case};
 use async_graphql::{Context, Object, Result};
@@ -17,8 +16,10 @@ use inputs::{
     GearMessageEnqueuedSelectionInput, GearUserMessageSentSelectionInput,
     EvmExecutedSelectionInput,
 };
+use objects::{StatusObject, MetadataObject, BatchObject};
 
 mod inputs;
+mod objects;
 
 pub struct EvmSupport(pub bool);
 
@@ -104,7 +105,7 @@ impl QueryRoot {
         #[graphql(name = "calls")]
         call_selections: Option<Vec<CallSelectionInput>>,
         include_all_blocks: Option<bool>,
-    ) -> Result<Vec<Batch>> {
+    ) -> Result<Vec<BatchObject>> {
         let options = BatchOptions {
             limit,
             from_block,
@@ -121,25 +122,30 @@ impl QueryRoot {
         };
         let mut batch = self.archive.batch(&options).await?;
         batch_to_camel_case(&mut batch);
+        let batch = batch.into_iter()
+            .map(|batch| batch.into())
+            .collect();
         Ok(batch)
     }
 
-    async fn metadata(&self) -> Result<Vec<Metadata>> {
-        let timer = DB_TIME_SPENT_SECONDS.with_label_values(&["metadata"]).start_timer();
-        let metadata = self.archive.metadata().await?;
-        timer.observe_duration();
+    async fn metadata(&self) -> Result<Vec<MetadataObject>> {
+        let metadata = self.archive.metadata().await?
+            .into_iter()
+            .map(|metadata| metadata.into())
+            .collect();
         Ok(metadata)
     }
 
-    async fn metadata_by_id(&self, id: String) -> Result<Option<Metadata>> {
-        let metadata = self.archive.metadata_by_id(id).await?;
+    async fn metadata_by_id(&self, id: String) -> Result<Option<MetadataObject>> {
+        let metadata = self.archive
+            .metadata_by_id(id)
+            .await?
+            .map(|metadata| metadata.into());
         Ok(metadata)
     }
 
-    async fn status(&self) -> Result<Status> {
-        let timer = DB_TIME_SPENT_SECONDS.with_label_values(&["block"]).start_timer();
-        let status = self.archive.status().await?;
-        timer.observe_duration();
+    async fn status(&self) -> Result<StatusObject> {
+        let status = self.archive.status().await?.into();
         Ok(status)
     }
 }

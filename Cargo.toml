@@ -27,9 +27,10 @@ tracing = "0.1.35"
 tracing-subscriber = { version = "0.3.11", features = ["json", "env-filter"] }
 futures-util = "0.3.21"
 uuid = { version = "1.1.2", features = ["v4"] }
-pin-project = "1.0.10"
 libc = "0.2"
 clap = { version = "3.1.18", features = ["derive"] }
+
+substrate-archive = { path = "./substrate-archive", version = "0.1.0" }
 
 [dev-dependencies]
 reqwest = { version = "0.11.11", features = ["json"] }

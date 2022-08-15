@@ -1,15 +1,12 @@
-use crate::archive::postgres::PostgresArchive;
-use std::boxed::Box;
 use async_graphql::{EmptyMutation, EmptySubscription, Schema};
-use graphql::{QueryRoot, EvmSupport, EvmPlusSupport, ContractsSupport, GearSupport};
+use graphql::{ContractsSupport, EvmPlusSupport, EvmSupport, GearSupport, QueryRoot};
 use sqlx::{Pool, Postgres};
+use std::boxed::Box;
+use substrate_archive::postgres::PostgresArchive;
 
-mod entities;
 mod graphql;
-mod server;
 mod metrics;
-mod error;
-mod archive;
+mod server;
 
 pub struct SubstrateGateway {
     pool: Pool<Postgres>,

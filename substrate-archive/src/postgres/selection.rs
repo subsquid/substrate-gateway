@@ -1,6 +1,6 @@
 use serde_json::Value;
 use crate::entities::{Call, Event, ContractsEvent};
-use crate::archive::{
+use crate::selection::{
     CallSelection, EventSelection, ContractsEventSelection, EthTransactSelection,
     GearMessageEnqueuedSelection, GearUserMessageSentSelection, EvmExecutedSelection,
 };

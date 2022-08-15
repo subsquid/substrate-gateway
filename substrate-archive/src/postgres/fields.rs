@@ -1,4 +1,4 @@
-use crate::archive::fields::{ExtrinsicFields, CallFields, ParentCallFields, EventFields};
+use crate::fields::{ExtrinsicFields, CallFields, ParentCallFields, EventFields};
 
 impl ParentCallFields {
     pub fn merge(&mut self, fields: &ParentCallFields) {

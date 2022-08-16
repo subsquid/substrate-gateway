@@ -1,8 +1,9 @@
 use serde_json::Value;
-use crate::entities::{Call, Event, ContractsEvent};
+use crate::entities::{Call, Event, EvmLog};
 use crate::selection::{
     CallSelection, EventSelection, ContractsEventSelection, EthTransactSelection,
     GearMessageEnqueuedSelection, GearUserMessageSentSelection, EvmExecutedSelection,
+    EvmLogSelection,
 };
 
 const WILDCARD: &str = "*";
@@ -16,6 +17,60 @@ impl CallSelection {
 impl EventSelection {
     pub fn r#match(&self, event: &Event) -> bool {
         self.name == WILDCARD || self.name == event.name
+    }
+}
+
+impl EvmLogSelection {
+    pub fn r#match(&self, log: &EvmLog) -> bool {
+        if let Some(args) = &log.args {
+            if let Some(value) = args.get("address") {
+                if let Some(address) = value.as_str() {
+                    if self.contract_match(address) && self.filter_match(log) {
+                        return true;
+                    }
+                }
+            }
+        }
+        false
+    }
+
+    fn contract_match(&self, address: &str) -> bool {
+        self.contract == WILDCARD || self.contract == address
+    }
+
+    fn filter_match(&self, log: &EvmLog) -> bool {
+        let filter: Vec<_> = self.filter.iter().enumerate().collect();
+        for (index, topics) in filter {
+            if !self.topics_match(topics, log, index) {
+                return false;
+            }
+        }
+        true
+    }
+
+    fn topics_match(&self, topics: &Vec<String>, log: &EvmLog, index: usize) -> bool {
+        if topics.is_empty() {
+            return true
+        }
+
+        if let Some(log_topic) = self.get_log_topic(log, index) {
+            topics.iter().any(|topic| topic == &log_topic)
+        } else {
+            false
+        }
+    }
+
+    fn get_log_topic(&self, log: &EvmLog, index: usize) -> Option<String> {
+        if let Some(value) = &log.args {
+            if let Some(value) = value.get("topics") {
+                if let Some(value) = value.get(index) {
+                    if let Some(topic) = value.as_str() {
+                        return Some(topic.to_string())
+                    }
+                }
+            }
+        }
+        None
     }
 }
 
@@ -43,10 +98,12 @@ impl EthTransactSelection {
 }
 
 impl ContractsEventSelection {
-    pub fn r#match(&self, event: &ContractsEvent) -> bool {
-        if let Some(value) = event.data.get("contract") {
-            if let Some(contract) = value.as_str() {
-                return contract == self.contract
+    pub fn r#match(&self, event: &Event) -> bool {
+        if let Some(value) = &event.args {
+            if let Some(value) = value.get("contract") {
+                if let Some(contract) = value.as_str() {
+                    return contract == self.contract
+                }
             }
         }
         false
@@ -55,8 +112,12 @@ impl ContractsEventSelection {
 
 impl GearMessageEnqueuedSelection {
     pub fn r#match(&self, event: &Event) -> bool {
-        if let Some(contract) = &event.contract {
-            return contract == &self.program
+        if let Some(value) = &event.args {
+            if let Some(value) = value.get("destination") {
+                if let Some(destination) = value.as_str() {
+                    return destination == self.program
+                }
+            }
         }
         false
     }
@@ -64,8 +125,14 @@ impl GearMessageEnqueuedSelection {
 
 impl GearUserMessageSentSelection {
     pub fn r#match(&self, event: &Event) -> bool {
-        if let Some(contract) = &event.contract {
-            return contract == &self.program
+        if let Some(value) = &event.args {
+            if let Some(value) = value.get("message") {
+                if let Some(value) = value.get("source") {
+                    if let Some(source) = value.as_str() {
+                        return source == self.program
+                    }
+                }
+            }
         }
         false
     }

@@ -1,9 +1,9 @@
 use std::collections::{HashMap, HashSet};
 use sqlx::{Pool, Arguments};
 use sqlx::postgres::{PgArguments, Postgres};
-use crate::entities::{Batch, Event, BlockHeader, EvmLog, ContractsEvent, Call, Extrinsic};
+use crate::entities::{Batch, Event, BlockHeader, EvmLog, Call, Extrinsic};
 use crate::error::Error;
-use crate::fields::{ExtrinsicFields, EventFields, CallFields};
+use crate::fields::{ExtrinsicFields, EventFields, CallFields, EvmLogFields};
 use crate::selection::{
     CallSelection, CallDataSelection, EventSelection,
     EvmLogSelection, ContractsEventSelection, EthTransactSelection,
@@ -13,7 +13,7 @@ use crate::selection::{
 use crate::metrics::ObserverExt;
 use super::BatchOptions;
 use super::utils::unify_and_merge;
-use super::serializer::{CallSerializer, EventSerializer, ExtrinsicSerializer};
+use super::serializer::{CallSerializer, EventSerializer, ExtrinsicSerializer, EvmLogSerializer};
 
 pub struct BatchLoader<'a> {
     pool: Pool<Postgres>,
@@ -40,8 +40,7 @@ const EVENTS_BY_ID_QUERY: &str = "SELECT
         call_id,
         name,
         args,
-        pos::int8,
-        contract
+        pos::int8
     FROM event
     WHERE id = ANY($1::char(23)[])";
 
@@ -49,9 +48,9 @@ impl<'a> BatchLoader<'a> {
     pub async fn load(&self) -> Result<Vec<Batch>, Error> {
         let mut calls = self.load_calls().await?;
         let mut events = self.load_events().await?;
-        let mut evm_logs = self.get_evm_logs().await?;
+        let mut evm_logs = self.load_evm_logs().await?;
         let mut eth_transactions = self.load_eth_transactions().await?;
-        let mut contracts_events = self.get_contracts_events().await?;
+        let mut contracts_events = self.load_contracts_events().await?;
         let mut messages_enqueued = self.load_messages_enqueued().await?;
         let mut messages_sent = self.load_messages_sent().await?;
         let mut evm_executed = self.load_evm_executed().await?;
@@ -80,6 +79,7 @@ impl<'a> BatchLoader<'a> {
 
         let mut extrinsic_fields: HashMap<String, ExtrinsicFields> = HashMap::new();
         let mut event_fields: HashMap<String, EventFields> = HashMap::new();
+        let mut log_fields: HashMap<String, EvmLogFields> = HashMap::new();
         let mut call_fields: HashMap<String, CallDataSelection> = HashMap::new();
 
         let mut call_fields_to_load: HashMap<String, CallFields> = HashMap::new();
@@ -195,55 +195,38 @@ impl<'a> BatchLoader<'a> {
         for event in &contracts_events {
             for selection in self.contracts_event_selections {
                 if selection.r#match(event) {
-                    if let Some(value) = event.data.get("extrinsic_id") {
-                        if let Some(extrinsic_id) = value.as_str() {
+                    process_event(event, &selection.data);
+                }
+            }
+        }
+        events.append(&mut contracts_events);
+
+        for log in &evm_logs {
+            for selection in self.evm_log_selections {
+                if selection.r#match(log) {
+                    log_fields.entry(log.id.clone())
+                        .and_modify(|fields| fields.merge(&selection.data.event))
+                        .or_insert_with(|| selection.data.event.clone());
+
+                    if let Some(extrinsic_id) = &log.extrinsic_id {
+                        if selection.data.event.extrinsic.any() {
                             extrinsic_fields.entry(extrinsic_id.to_string())
                                 .and_modify(|fields| fields.merge(&selection.data.event.extrinsic))
                                 .or_insert_with(|| selection.data.event.extrinsic.clone());
                         }
                     }
-                    if let Some(value) = event.data.get("call_id") {
-                        if let Some(call_id) = value.as_str() {
-                            if let Some(fields) = call_fields.get_mut(call_id) {
-                                fields.call.merge(&selection.data.event.call);
-                            } else {
-                                if let Some(fields) = call_fields_to_load.get_mut(call_id) {
-                                    fields.merge(&selection.data.event.call);
-                                } else {
-                                    call_fields_to_load.insert(
-                                        call_id.to_string(),
-                                        selection.data.event.call.clone()
-                                    );
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-        }
-        for log in &evm_logs {
-            let selection = &self.evm_log_selections[log.selection_index as usize];
-            if let Some(value) = log.data.get("extrinsic_id") {
-                if let Some(extrinsic_id) = value.as_str() {
-                    if selection.data.event.extrinsic.any() {
-                        extrinsic_fields.entry(extrinsic_id.to_string())
-                            .and_modify(|fields| fields.merge(&selection.data.event.extrinsic))
-                            .or_insert_with(|| selection.data.event.extrinsic.clone());
-                    }
-                }
-            }
-            if let Some(value) = log.data.get("call_id") {
-                if let Some(call_id) = value.as_str() {
-                    if let Some(fields) = call_fields.get_mut(call_id) {
-                        fields.call.merge(&selection.data.event.call);
-                    } else {
-                        if let Some(fields) = call_fields_to_load.get_mut(call_id) {
-                            fields.merge(&selection.data.event.call);
+                    if let Some(call_id) = &log.call_id {
+                        if let Some(fields) = call_fields.get_mut(call_id) {
+                            fields.call.merge(&selection.data.event.call);
                         } else {
-                            call_fields_to_load.insert(
-                                call_id.to_string(),
-                                selection.data.event.call.clone()
-                            );
+                            if let Some(fields) = call_fields_to_load.get_mut(call_id) {
+                                fields.merge(&selection.data.event.call);
+                            } else {
+                                call_fields_to_load.insert(
+                                    call_id.to_string(),
+                                    selection.data.event.call.clone()
+                                );
+                            }
                         }
                     }
                 }
@@ -299,6 +282,18 @@ impl<'a> BatchLoader<'a> {
             }
         }
 
+        let mut logs_by_block: HashMap<String, Vec<serde_json::Value>> = HashMap::new();
+        for log in evm_logs {
+            let fields = log_fields.get(&log.id).unwrap();
+            let serializer = EvmLogSerializer { log: &log, fields };
+            let data = serde_json::to_value(serializer).unwrap();
+            if logs_by_block.contains_key(&log.block_id) {
+                logs_by_block.get_mut(&log.block_id).unwrap().push(data);
+            } else {
+                logs_by_block.insert(log.block_id.clone(), vec![data]);
+            }
+        }
+
         let mut calls_by_block: HashMap<String, Vec<serde_json::Value>> = HashMap::new();
         calls.append(&mut eth_transactions);
         for call in calls {
@@ -325,7 +320,7 @@ impl<'a> BatchLoader<'a> {
             }
         }
         let batch = self.create_batch(blocks, events_by_block, calls_by_block, extrinsics_by_block,
-                                      evm_logs, contracts_events);
+                                      logs_by_block);
         Ok(batch)
     }
 
@@ -487,16 +482,57 @@ impl<'a> BatchLoader<'a> {
         if self.gear_message_enqueued_selections.is_empty() {
             return Ok(Vec::new())
         }
-        let from_block = format!("{:010}", self.from_block);
-        let to_block = self.to_block.map(|to_block| format!("{:010}", to_block + 1));
+        let mut id_gt = format!("{:010}", self.from_block);
+        let id_lt = self.to_block.map(|to_block| format!("{:010}", to_block + 1));
         let programs = self.gear_message_enqueued_selections.iter()
             .map(|selection| selection.program.clone())
             .collect::<Vec<String>>();
-        let id_query = Box::new(MessageEnqueuedIdQuery { programs, to_block, from_block });
-        let ids = self.load_ids(id_query).await?;
+
+        let mut ids = Vec::new();
+        let mut blocks = HashSet::new();
+        let limit: i64 = 2000;
+
+        'outer: loop {
+            let mut query = String::from("SELECT event_id
+                FROM gear_message_enqueued
+                WHERE program = ANY($1) AND event_id > $2");
+            let mut args = PgArguments::default();
+            args.add(&programs);
+            args.add(&id_gt);
+            let mut args_len = 2;
+            if let Some(id_lt) = &id_lt {
+                args_len += 1;
+                args.add(id_lt);
+                query.push_str(&format!(" AND event_id < ${}", args_len));
+            }
+            args_len += 1;
+            args.add(limit);
+            query.push_str(&format!(" LIMIT ${}", args_len));
+
+            let result = sqlx::query_scalar_with::<_, String, _>(&query, args)
+                .fetch_all(&self.pool)
+                .observe_duration("gear_message_enqueued")
+                .await?;
+            if result.is_empty() {
+                break
+            } else {
+                for id in result {
+                    let block_id = id.split('-').next().unwrap().to_string();
+                    if blocks.len() == self.limit as usize && !blocks.contains(&block_id) {
+                        break 'outer;
+                    }
+                    blocks.insert(block_id);
+                    ids.push(id);
+                }
+
+                id_gt = ids.last().unwrap().clone();
+            }
+        }
+
         let events = sqlx::query_as::<_, Event>(EVENTS_BY_ID_QUERY)
             .bind(&ids)
             .fetch_all(&self.pool)
+            .observe_duration("event")
             .await?;
         Ok(events)
     }
@@ -505,16 +541,57 @@ impl<'a> BatchLoader<'a> {
         if self.gear_user_message_sent_selections.is_empty() {
             return Ok(Vec::new())
         }
-        let from_block = format!("{:010}", self.from_block);
-        let to_block = self.to_block.map(|to_block| format!("{:010}", to_block + 1));
+        let mut id_gt = format!("{:010}", self.from_block);
+        let id_lt = self.to_block.map(|to_block| format!("{:010}", to_block + 1));
         let programs = self.gear_user_message_sent_selections.iter()
             .map(|selection| selection.program.clone())
             .collect::<Vec<String>>();
-        let id_query = Box::new(MessageSentIdQuery { programs, to_block, from_block });
-        let ids = self.load_ids(id_query).await?;
+
+        let mut ids = Vec::new();
+        let mut blocks = HashSet::new();
+        let limit: i64 = 2000;
+
+        'outer: loop {
+            let mut query = String::from("SELECT event_id
+                FROM gear_user_message_sent
+                WHERE program = ANY($1) AND event_id > $2");
+            let mut args = PgArguments::default();
+            args.add(&programs);
+            args.add(&id_gt);
+            let mut args_len = 2;
+            if let Some(id_lt) = &id_lt {
+                args_len += 1;
+                args.add(id_lt);
+                query.push_str(&format!(" AND event_id < ${}", args_len));
+            }
+            args_len += 1;
+            args.add(limit);
+            query.push_str(&format!(" LIMIT ${}", args_len));
+
+            let result = sqlx::query_scalar_with::<_, String, _>(&query, args)
+                .fetch_all(&self.pool)
+                .observe_duration("gear_user_message_sent")
+                .await?;
+            if result.is_empty() {
+                break
+            } else {
+                for id in result {
+                    let block_id = id.split('-').next().unwrap().to_string();
+                    if blocks.len() == self.limit as usize && !blocks.contains(&block_id) {
+                        break 'outer;
+                    }
+                    blocks.insert(block_id);
+                    ids.push(id);
+                }
+
+                id_gt = ids.last().unwrap().clone();
+            }
+        }
+
         let events = sqlx::query_as::<_, Event>(EVENTS_BY_ID_QUERY)
             .bind(&ids)
             .fetch_all(&self.pool)
+            .observe_duration("event")
             .await?;
         Ok(events)
     }
@@ -596,153 +673,159 @@ impl<'a> BatchLoader<'a> {
         Ok(events)
     }
 
-    async fn get_contracts_events(&self) -> Result<Vec<ContractsEvent>, Error> {
+    async fn load_contracts_events(&self) -> Result<Vec<Event>, Error> {
         if self.contracts_event_selections.is_empty() {
-            return Ok(Vec::new());
+            return Ok(Vec::new())
         }
-        let query_dynamic_part = self.contracts_event_selections.iter()
-            .enumerate()
-            .map(|(index, selection)| {
-                let mut selected_fields: Vec<String> = selection.data.event.selected_fields()
-                    .iter()
-                    .map(|field| field.to_string())
-                    .collect();
-                selected_fields.extend_from_slice(&[
-                    "id".to_string(),
-                    "pos".to_string(),
-                    "name".to_string(),
-                    "contract".to_string(),
-                ]);
-                let build_object_fields = selected_fields
-                    .iter()
-                    .map(|field| format!("'{}', event.{}", &field, &field))
-                    .collect::<Vec<String>>()
-                    .join(", ");
-                let from_block = format!("{:010}", self.from_block);
-                let to_block = self.to_block.map_or(
-                    "null".to_string(),
-                    |to_block| format!("{:010}", to_block + 1)
-                );
-                let contract_condition = if selection.contract == "*" {
-                    "event.name = 'Contracts.ContractEmitted'".to_string()
-                } else {
-                    format!("event.contract = '{}'", &selection.contract)
-                };
-                format!(
-                    "(
-                        SELECT
-                            event.block_id,
-                            json_agg(jsonb_build_object(
-                                'selection_index', {},
-                                'data', jsonb_build_object({})
-                            )) as events
-                        FROM event
-                        WHERE {} AND event.block_id >= '{}'
-                            AND ({} IS null OR event.block_id < '{}')
-                        GROUP BY block_id
-                        ORDER BY block_id
-                        LIMIT {}
-                    )",
-                    index, &build_object_fields, &contract_condition,
-                    from_block, to_block, to_block, self.limit
-                )
-            })
-            .collect::<Vec<String>>()
-            .join(" UNION ");
-        let query = format!("SELECT
-                block_id,
-                (json_array_elements(events) ->> 'selection_index')::INT2 AS selection_index,
-                json_array_elements(events) -> 'data' AS data
-            FROM (
-                SELECT
-                    block_id,
-                    json_agg(event) AS events
-                FROM (
-                    SELECT
-                        block_id,
-                        json_array_elements(events) AS event
-                    FROM ({}) AS events_by_block
-                ) AS events
-                GROUP BY block_id
-                LIMIT {}
-            ) AS events_by_block", &query_dynamic_part, self.limit);
-        let events = sqlx::query_as::<_, ContractsEvent>(&query)
+        let mut id_gt = format!("{:010}", self.from_block);
+        let id_lt = self.to_block.map(|to_block| format!("{:010}", to_block + 1));
+        let contracts = self.contracts_event_selections.iter()
+            .map(|selection| selection.contract.clone())
+            .collect::<Vec<String>>();
+
+        let mut ids = Vec::new();
+        let mut blocks = HashSet::new();
+        let limit: i64 = 2000;
+
+        'outer: loop {
+            let mut query = String::from("SELECT event_id
+                FROM contracts_contract_emitted
+                WHERE contract = ANY($1) AND event_id > $2");
+            let mut args = PgArguments::default();
+            args.add(&contracts);
+            args.add(&id_gt);
+            let mut args_len = 2;
+            if let Some(id_lt) = &id_lt {
+                args_len += 1;
+                args.add(id_lt);
+                query.push_str(&format!(" AND event_id < ${}", args_len));
+            }
+            args_len += 1;
+            args.add(limit);
+            query.push_str(&format!(" LIMIT ${}", args_len));
+
+            let result = sqlx::query_scalar_with::<_, String, _>(&query, args)
+                .fetch_all(&self.pool)
+                .observe_duration("contracts_contract_emitted")
+                .await?;
+            if result.is_empty() {
+                break
+            } else {
+                for id in result {
+                    let block_id = id.split('-').next().unwrap().to_string();
+                    if blocks.len() == self.limit as usize && !blocks.contains(&block_id) {
+                        break 'outer;
+                    }
+                    blocks.insert(block_id);
+                    ids.push(id);
+                }
+
+                id_gt = ids.last().unwrap().clone();
+            }
+        }
+
+        let events = sqlx::query_as::<_, Event>(EVENTS_BY_ID_QUERY)
+            .bind(&ids)
             .fetch_all(&self.pool)
             .observe_duration("event")
             .await?;
         Ok(events)
     }
 
-    async fn get_evm_logs(&self) -> Result<Vec<EvmLog>, Error> {
+    async fn load_evm_logs(&self) -> Result<Vec<EvmLog>, Error> {
         if self.evm_log_selections.is_empty() {
-            return Ok(Vec::new());
+            return Ok(Vec::new())
         }
-        let query = self.evm_log_selections.iter()
-            .enumerate()
-            .map(|(index, selection)| {
-                let mut selected_fields = selection.data.event.selected_fields();
-                selected_fields.extend_from_slice(&["id".to_string(), "pos".to_string(), "name".to_string()]);
-                let mut build_object_args: Vec<String> = selected_fields
-                    .iter()
-                    .map(|field| format!("'{}', event.{}", &field, &field))
-                    .collect();
-                if selection.data.event.evm_tx_hash {
-                    // transaction_hash has second index
-                    let tx_hash = "'evmTxHash', jsonb_extract_path_text(executed_event.args, '2')".to_string();
-                    build_object_args.push(tx_hash);
+        let mut ids = Vec::new();
+        for selection in self.evm_log_selections {
+            let mut log_ids: Vec<String> = Vec::new();
+            let mut blocks = HashSet::new();
+            let limit: i64 = 2000;
+
+            let mut id_gt = format!("{:010}", self.from_block);
+            let id_lt = self.to_block.map(|to_block| format!("{:010}", to_block + 1));
+
+            'outer: loop {
+                let mut query = String::from("SELECT event_id
+                    FROM frontier_evm_log
+                    WHERE event_id > $1");
+                let mut args = PgArguments::default();
+                args.add(&id_gt);
+                let mut args_len = 1;
+                if selection.contract != "*" {
+                    args_len += 1;
+                    args.add(&selection.contract);
+                    query.push_str(&format!(" AND contract = ${}", args_len));
                 }
-                let build_object_fields = build_object_args.join(", ");
-                let from_block = format!("{:010}", self.from_block);
-                let to_block = self.to_block.map_or(
-                    "null".to_string(),
-                    |to_block| format!("{:010}", to_block + 1)
-                );
-                let contract_condition = if selection.contract == "*" {
-                    "event.name = 'EVM.Log'".to_string()
-                } else {
-                    format!("event.contract = '{}'", &selection.contract)
-                };
-                let mut filters = vec![contract_condition];
-                let topics_filters: Vec<String> = selection.filter.iter()
-                    .enumerate()
-                    .filter_map(|(index, topics)| {
-                        if topics.is_empty() {
-                            return None
+                if let Some(id_lt) = &id_lt {
+                    args_len += 1;
+                    args.add(id_lt);
+                    query.push_str(&format!(" AND event_id < ${}", args_len));
+                }
+                for index in 0..=3 {
+                    if let Some(topics) = selection.filter.get(index) {
+                        if !topics.is_empty() {
+                            args_len += 1;
+                            args.add(topics);
+                            query.push_str(&format!(" AND topic{} = ANY(${}::char(66)[])", index, args_len));
                         }
-                        let topic_filter = topics.iter()
-                            .map(|topic| {
-                                format!("jsonb_extract_path_text(event.args, 'topics', '{}') = '{}'", index, topic)
-                            })
-                            .collect::<Vec<String>>()
-                            .join(" OR ");
-                        Some(format!("({})", topic_filter))
-                    })
-                    .collect();
-                if !topics_filters.is_empty() {
-                    let topics_filter = topics_filters.join(" AND ");
-                    filters.push(format!("({})", topics_filter));
+                    }
                 }
-                let conditions = filters.join(" AND ");
-                format!("(
-                    SELECT
-                        event.block_id,
-                        {}::int2 AS selection_index,
-                        jsonb_build_object({}) AS data
-                    FROM event
-                    INNER JOIN event executed_event
-                        ON event.extrinsic_id = executed_event.extrinsic_id
-                            AND executed_event.name = 'Ethereum.Executed'
-                    WHERE {} AND event.block_id IN (
-                        SELECT DISTINCT block_id FROM event
-                        WHERE {} AND block_id > '{}' AND ({} IS NULL OR block_id < '{}')
-                        ORDER BY block_id
-                        LIMIT {}
-                    )
-                )", index, &build_object_fields, &conditions, &conditions, from_block, to_block, to_block, self.limit)
-            })
-            .collect::<Vec<String>>()
-            .join(" UNION ");
-        let logs = sqlx::query_as::<_, EvmLog>(&query)
+                args_len += 1;
+                args.add(limit);
+                query.push_str(&format!(" LIMIT ${}", args_len));
+
+                let result = sqlx::query_scalar_with::<_, String, _>(&query, args)
+                    .fetch_all(&self.pool)
+                    .observe_duration("frontier_evm_log")
+                    .await?;
+                if result.is_empty() {
+                    break
+                } else {
+                    for id in result {
+                        let block_id = id.split('-').next().unwrap().to_string();
+                        if blocks.len() == self.limit as usize && !blocks.contains(&block_id) {
+                            break 'outer;
+                        }
+                        blocks.insert(block_id);
+                        log_ids.push(id);
+                    }
+
+                    id_gt = log_ids.last().unwrap().clone();
+                }
+            }
+            ids.append(&mut log_ids);
+        }
+        ids.sort();
+        ids.dedup();
+        let mut blocks = HashSet::new();
+        ids.retain(|id| {
+            let block_id = id.split('-').next().unwrap().to_string();
+            if blocks.len() == self.limit as usize && !blocks.contains(&block_id) {
+                false
+            } else {
+                blocks.insert(block_id);
+                true
+            }
+        });
+        let query = "SELECT
+                event.id,
+                event.block_id,
+                event.index_in_block::int8,
+                event.phase,
+                event.extrinsic_id,
+                event.call_id,
+                event.name,
+                event.args,
+                event.pos::int8,
+                jsonb_extract_path_text(executed_event.args, '2') AS evm_tx_hash
+            FROM event
+            JOIN event executed_event
+                ON event.extrinsic_id = executed_event.extrinsic_id
+                    AND executed_event.name = 'Ethereum.Executed'
+            WHERE event.id = ANY($1::char(23)[])";
+        let logs = sqlx::query_as::<_, EvmLog>(query)
+            .bind(&ids)
             .fetch_all(&self.pool)
             .observe_duration("event")
             .await?;
@@ -800,7 +883,7 @@ impl<'a> BatchLoader<'a> {
         events: &Vec<Event>,
         evm_logs: &Vec<EvmLog>,
         eth_transactions: &Vec<Call>,
-        contracts_events: &Vec<ContractsEvent>,
+        contracts_events: &Vec<Event>,
         messages_enqueued: &Vec<Event>,
         messages_sent: &Vec<Event>,
         evm_executed: &Vec<Event>,
@@ -911,23 +994,17 @@ impl<'a> BatchLoader<'a> {
         mut events_by_block: HashMap<String, Vec<serde_json::Value>>,
         mut calls_by_block: HashMap<String, Vec<serde_json::Value>>,
         mut extrinsics_by_block: HashMap<String, Vec<serde_json::Value>>,
-        evm_logs: Vec<EvmLog>,
-        contracts_events: Vec<ContractsEvent>,
+        logs_by_block: HashMap<String, Vec<serde_json::Value>>,
     ) -> Vec<Batch> {
-        for log in evm_logs {
-            events_by_block.entry(log.block_id)
+        for (block_id, mut data) in logs_by_block.into_iter() {
+            events_by_block.entry(block_id)
                 .or_insert_with(Vec::new)
-                .push(log.data);
-        }
-        for event in contracts_events {
-            events_by_block.entry(event.block_id)
-                .or_insert_with(Vec::new)
-                .push(event.data);
+                .append(&mut data);
         }
         blocks.into_iter()
             .map(|block| {
                 let events = events_by_block.remove(&block.id).unwrap_or_default();
-                let event_fields = vec!["id", "block_id", "index_in_block", "phase", "evmTxHash",
+                let event_fields = vec!["id", "block_id", "index_in_block", "phase", "evm_tx_hash",
                                         "extrinsic_id", "call_id", "name", "args", "pos"];
                 let deduplicated_events = unify_and_merge(events, event_fields);
                 let calls = calls_by_block.remove(&block.id).unwrap_or_default();
@@ -1069,74 +1146,6 @@ impl IdQuery for CallIdQuery {
             .bind(limit)
             .fetch_all(pool)
             .observe_duration("call")
-            .await?;
-        Ok(result)
-    }
-}
-
-struct MessageEnqueuedIdQuery {
-    programs: Vec<String>,
-    from_block: String,
-    to_block: Option<String>,
-}
-
-#[async_trait::async_trait]
-impl IdQuery for MessageEnqueuedIdQuery {
-    async fn execute(
-        &self,
-        offset: i64,
-        limit: i64,
-        pool: &Pool<Postgres>
-    ) -> Result<Vec<(String,)>, Error> {
-        let query = "SELECT id
-            FROM event
-            WHERE name = 'Gear.MessageEnqueued' AND contract = ANY($1)
-                AND block_id > $2 AND ($3 IS null OR block_id < $3)
-            ORDER BY block_id, id
-            OFFSET $4
-            LIMIT $5";
-        let result = sqlx::query_as::<_, (String,)>(query)
-            .bind(&self.programs)
-            .bind(&self.from_block)
-            .bind(&self.to_block)
-            .bind(offset)
-            .bind(limit)
-            .fetch_all(pool)
-            .observe_duration("event")
-            .await?;
-        Ok(result)
-    }
-}
-
-struct MessageSentIdQuery {
-    programs: Vec<String>,
-    from_block: String,
-    to_block: Option<String>,
-}
-
-#[async_trait::async_trait]
-impl IdQuery for MessageSentIdQuery {
-    async fn execute(
-        &self,
-        offset: i64,
-        limit: i64,
-        pool: &Pool<Postgres>
-    ) -> Result<Vec<(String,)>, Error> {
-        let query = "SELECT id
-            FROM event
-            WHERE name = 'Gear.UserMessageSent' AND contract = ANY($1)
-                AND block_id > $2 AND ($3 IS null OR block_id < $3)
-            ORDER BY block_id
-            OFFSET $4
-            LIMIT $5";
-        let result = sqlx::query_as::<_, (String,)>(query)
-            .bind(&self.programs)
-            .bind(&self.from_block)
-            .bind(&self.to_block)
-            .bind(offset)
-            .bind(limit)
-            .fetch_all(pool)
-            .observe_duration("event")
             .await?;
         Ok(result)
     }

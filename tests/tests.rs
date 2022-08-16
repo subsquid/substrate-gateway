@@ -170,21 +170,6 @@ async fn test_wildcard_search() {
 }
 
 #[actix_web::test]
-async fn test_contracts_wildcard_search() {
-    launch_gateway();
-    let client = Client::new();
-    let batch = client
-        .batch(json!({
-            "limit": 1,
-            "contractsEvents": [{"contract": "*"}],
-        }))
-        .await;
-    let event = &batch.events[0];
-    assert!(event.id == "0000000734-000004-251d1");
-    assert!(event.name == "Contracts.ContractEmitted");
-}
-
-#[actix_web::test]
 async fn test_evm_wildcard_search() {
     launch_gateway();
     let client = Client::new();

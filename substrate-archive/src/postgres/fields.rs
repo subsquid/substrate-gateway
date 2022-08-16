@@ -1,4 +1,4 @@
-use crate::fields::{ExtrinsicFields, CallFields, ParentCallFields, EventFields};
+use crate::fields::{ExtrinsicFields, CallFields, ParentCallFields, EventFields, EvmLogFields};
 
 impl ParentCallFields {
     pub fn merge(&mut self, fields: &ParentCallFields) {
@@ -104,6 +104,32 @@ impl EventFields {
         }
         if fields.args {
             self.args = true;
+        }
+    }
+}
+
+impl EvmLogFields {
+    pub fn merge(&mut self, fields: &EvmLogFields) {
+        if fields._all {
+            self._all = true;
+        }
+        if fields.index_in_block {
+            self.index_in_block = true;
+        }
+        if fields.phase {
+            self.phase = true;
+        }
+        if fields.extrinsic.any() {
+            self.extrinsic.merge(&fields.extrinsic);
+        }
+        if fields.call.any() {
+            self.call.merge(&fields.call);
+        }
+        if fields.args {
+            self.args = true;
+        }
+        if fields.evm_tx_hash {
+            self.evm_tx_hash = true;
         }
     }
 }

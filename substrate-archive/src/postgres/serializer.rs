@@ -1,6 +1,6 @@
-use crate::fields::{ExtrinsicFields, EventFields};
+use crate::fields::{ExtrinsicFields, EventFields, EvmLogFields};
 use crate::selection::CallDataSelection;
-use crate::entities::{Call, Event, Extrinsic};
+use crate::entities::{Call, Event, Extrinsic, EvmLog};
 use serde::ser::SerializeStruct;
 
 pub struct ExtrinsicSerializer<'a> {
@@ -51,6 +51,33 @@ impl<'a> serde::Serialize for EventSerializer<'a> {
                 "extrinsic_id" => state.serialize_field("extrinsic_id", &self.event.extrinsic_id)?,
                 "call_id" => state.serialize_field("call_id", &self.event.call_id)?,
                 "args" => state.serialize_field("args", &self.event.args)?,
+                _ => panic!("unexpected field"),
+            };
+        }
+        state.end()
+    }
+}
+
+pub struct EvmLogSerializer<'a> {
+    pub log: &'a EvmLog,
+    pub fields: &'a EvmLogFields,
+}
+
+impl<'a> serde::Serialize for EvmLogSerializer<'a> {
+    fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        let fields = self.fields.selected_fields();
+        let mut state = serializer.serialize_struct("EvmLog", fields.len() + 3)?;
+        state.serialize_field("id", &self.log.id)?;
+        state.serialize_field("pos", &self.log.pos)?;
+        state.serialize_field("name", &self.log.name)?;
+        for field in fields {
+            match field {
+                "index_in_block" => state.serialize_field("index_in_block", &self.log.index_in_block)?,
+                "phase" => state.serialize_field("phase", &self.log.phase)?,
+                "extrinsic_id" => state.serialize_field("extrinsic_id", &self.log.extrinsic_id)?,
+                "call_id" => state.serialize_field("call_id", &self.log.call_id)?,
+                "args" => state.serialize_field("args", &self.log.args)?,
+                "evm_tx_hash" => state.serialize_field("evm_tx_hash", &self.log.evm_tx_hash)?,
                 _ => panic!("unexpected field"),
             };
         }

@@ -249,31 +249,35 @@ impl EvmLogFields {
         }
     }
 
-    pub fn selected_fields(&self) -> Vec<String> {
+    pub fn selected_fields(&self) -> Vec<&str> {
         let mut fields = vec![];
         if self._all {
             fields.extend_from_slice(&[
-                "index_in_block".to_string(),
-                "phase".to_string(),
-                "extrinsic_id".to_string(),
-                "call_id".to_string(),
-                "args".to_string(),
+                "index_in_block",
+                "phase",
+                "extrinsic_id",
+                "call_id",
+                "args",
+                "evm_tx_hash",
             ]);
         } else {
             if self.index_in_block {
-                fields.push("index_in_block".to_string());
+                fields.push("index_in_block");
             }
             if self.phase {
-                fields.push("phase".to_string());
+                fields.push("phase");
             }
             if self.extrinsic.any() {
-                fields.push("extrinsic_id".to_string());
+                fields.push("extrinsic_id");
             }
             if self.call.any() {
-                fields.push("call_id".to_string());
+                fields.push("call_id");
             }
             if self.args {
-                fields.push("args".to_string());
+                fields.push("args");
+            }
+            if self.evm_tx_hash {
+                fields.push("evm_tx_hash");
             }
         }
         fields

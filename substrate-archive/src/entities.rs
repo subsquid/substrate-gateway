@@ -26,7 +26,20 @@ pub struct Event {
     pub name: String,
     pub args: Option<serde_json::Value>,
     pub pos: i64,
-    pub contract: Option<String>,
+}
+
+#[derive(sqlx::FromRow, Debug)]
+pub struct EvmLog {
+    pub id: String,
+    pub block_id: String,
+    pub index_in_block: i64,
+    pub phase: String,
+    pub extrinsic_id: Option<String>,
+    pub call_id: Option<String>,
+    pub name: String,
+    pub args: Option<serde_json::Value>,
+    pub pos: i64,
+    pub evm_tx_hash: Option<String>
 }
 
 #[derive(sqlx::FromRow, Debug)]
@@ -57,20 +70,6 @@ pub struct Extrinsic {
     pub error: Option<serde_json::Value>,
     pub pos: i64,
     pub hash: String
-}
-
-#[derive(sqlx::FromRow, Debug)]
-pub struct EvmLog {
-    pub block_id: String,
-    pub selection_index: i16,
-    pub data: serde_json::Value,
-}
-
-#[derive(sqlx::FromRow, Debug)]
-pub struct ContractsEvent {
-    pub block_id: String,
-    pub selection_index: i16,
-    pub data: serde_json::Value,
 }
 
 #[derive(Debug)]

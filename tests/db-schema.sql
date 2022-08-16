@@ -61,8 +61,7 @@ CREATE TABLE event (
     call_id varchar(30) references call,
     name varchar not null,
     args jsonb,
-    pos integer not null,
-    contract varchar
+    pos integer not null
 );
 
 
@@ -75,4 +74,32 @@ CREATE TABLE evm_log (
     topic1 varchar,
     topic2 varchar,
     topic3 varchar
+);
+
+
+CREATE TABLE gear_message_enqueued (
+    event_id char(23) primary key REFERENCES event,
+    program varchar not null
+);
+
+
+CREATE TABLE gear_user_message_sent (
+   event_id char(23) primary key REFERENCES event,
+   program varchar not null
+);
+
+
+CREATE TABLE contracts_contract_emitted (
+    event_id char(23) primary key REFERENCES event,
+    contract varchar not null
+);
+
+
+CREATE TABLE frontier_evm_log (
+    event_id char(23) primary key REFERENCES event,
+    contract char(42) not null,
+    topic0 char(66),
+    topic1 char(66),
+    topic2 char(66),
+    topic3 char(66)
 );

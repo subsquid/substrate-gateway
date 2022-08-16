@@ -72,14 +72,6 @@ impl BlockHeaderObject<'_> {
         &self.0.parent_hash
     }
 
-    async fn state_root(&self) -> &String {
-        &self.0.state_root
-    }
-
-    async fn extrinsics_root(&self) -> &String {
-        &self.0.extrinsics_root
-    }
-
     async fn timestamp(&self) -> DateTime<Utc> {
         self.0.timestamp
     }

@@ -2076,7 +2076,7 @@ dependencies = [
 
 [[package]]
 name = "substrate-gateway"
-version = "1.4.0"
+version = "1.3.2"
 dependencies = [
  "actix-web",
  "async-graphql",

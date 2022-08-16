@@ -842,8 +842,6 @@ impl<'a> BatchLoader<'a> {
                 height::int8,
                 hash,
                 parent_hash,
-                state_root,
-                extrinsics_root,
                 timestamp,
                 spec_id,
                 validator
@@ -863,8 +861,6 @@ impl<'a> BatchLoader<'a> {
                 height::int8,
                 hash,
                 parent_hash,
-                state_root,
-                extrinsics_root,
                 timestamp,
                 spec_id,
                 validator

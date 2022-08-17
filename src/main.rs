@@ -1,6 +1,6 @@
-use std::time::Duration;
 use clap::Parser;
 use sqlx::postgres::PgPoolOptions;
+use std::time::Duration;
 use substrate_gateway::SubstrateGateway;
 
 mod logger;
@@ -20,17 +20,13 @@ struct Args {
     #[clap(long)]
     evm_support: bool,
 
-    /// EVM+ pallet support
-    #[clap(long)]
-    evm_plus_support: bool,
-
     /// Сontracts pallet support
     #[clap(long)]
     contracts_support: bool,
 
     /// Gear pallet support
     #[clap(long)]
-    gear_support: bool
+    gear_support: bool,
 }
 
 #[tracing::instrument]
@@ -49,7 +45,6 @@ async fn main() -> std::io::Result<()> {
         .evm_support(args.evm_support)
         .contracts_support(args.contracts_support)
         .gear_support(args.gear_support)
-        .evm_plus_support(args.evm_plus_support)
         .run()
         .await
 }

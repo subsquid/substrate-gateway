@@ -98,8 +98,8 @@ impl QueryRoot {
         gear_message_enqueued_selections: Option<Vec<GearMessageEnqueuedSelectionInput>>,
         #[graphql(name = "gearUserMessagesSent", visible = "is_gear_supported")]
         gear_user_message_sent_selections: Option<Vec<GearUserMessageSentSelectionInput>>,
-        #[graphql(name = "evmExecuted", visible = "is_evm_plus_supported")]
-        evm_executed_selections: Option<Vec<EvmExecutedSelectionInput>>,
+        // #[graphql(name = "evmExecuted", visible = "is_evm_plus_supported")]
+        // evm_executed_selections: Option<Vec<EvmExecutedSelectionInput>>,
         #[graphql(name = "events")]
         event_selections: Option<Vec<EventSelectionInput>>,
         #[graphql(name = "calls")]
@@ -118,7 +118,8 @@ impl QueryRoot {
             contracts_event_selections: self.unwrap_selections::<ContractsEventSelectionInput, ContractsEventSelection>(contracts_event_selections),
             gear_message_enqueued_selections: self.unwrap_selections::<GearMessageEnqueuedSelectionInput, GearMessageEnqueuedSelection>(gear_message_enqueued_selections),
             gear_user_message_sent_selections: self.unwrap_selections::<GearUserMessageSentSelectionInput, GearUserMessageSentSelection>(gear_user_message_sent_selections),
-            evm_executed_selections: self.unwrap_selections::<EvmExecutedSelectionInput, EvmExecutedSelection>(evm_executed_selections),
+            evm_executed_selections: vec![],
+            // evm_executed_selections: self.unwrap_selections::<EvmExecutedSelectionInput, EvmExecutedSelection>(evm_executed_selections),
         };
         let mut batch = self.archive.batch(&options).await?;
         batch_to_camel_case(&mut batch);

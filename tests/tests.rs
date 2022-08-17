@@ -210,48 +210,48 @@ async fn test_gear_user_sent_messages() {
     assert!(event.name == "Gear.UserMessageSent");
 }
 
-#[actix_web::test]
-async fn test_evm_executed() {
-    launch_gateway();
-    let client = Client::new();
-    let batch = client
-        .batch(json!({
-            "limit": 1,
-            "evmExecuted": [{"contract": "0x0000000000000000000100000000000000000080"}],
-        }))
-        .await;
-    let event = &batch.events[0];
-    assert!(event.id == "0001818666-000011-af202");
-    assert!(event.name == "EVM.Executed");
-}
+// #[actix_web::test]
+// async fn test_evm_executed() {
+//     launch_gateway();
+//     let client = Client::new();
+//     let batch = client
+//         .batch(json!({
+//             "limit": 1,
+//             "evmExecuted": [{"contract": "0x0000000000000000000100000000000000000080"}],
+//         }))
+//         .await;
+//     let event = &batch.events[0];
+//     assert!(event.id == "0001818666-000011-af202");
+//     assert!(event.name == "EVM.Executed");
+// }
 
-#[actix_web::test]
-async fn test_evm_executed_topics() {
-    launch_gateway();
-    let client = Client::new();
-    let topics_data = [
-        (json!([]), true),
-        (
-            json!([["0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef"]]),
-            true,
-        ),
-        (json!([["unexisted topic"]]), false),
-    ];
-    for (topics, has_result) in topics_data {
-        let batch = client
-            .batch_optional(json!({
-                "limit": 1,
-                "evmExecuted": [{
-                    "contract": "0x0000000000000000000100000000000000000080",
-                    "filter": topics,
-                }],
-            }))
-            .await;
-        assert!(batch.is_some() == has_result);
-        if let Some(batch) = batch {
-            let event = &batch.events[0];
-            assert!(event.id == "0001818666-000011-af202");
-            assert!(event.name == "EVM.Executed");
-        }
-    }
-}
+// #[actix_web::test]
+// async fn test_evm_executed_topics() {
+//     launch_gateway();
+//     let client = Client::new();
+//     let topics_data = [
+//         (json!([]), true),
+//         (
+//             json!([["0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef"]]),
+//             true,
+//         ),
+//         (json!([["unexisted topic"]]), false),
+//     ];
+//     for (topics, has_result) in topics_data {
+//         let batch = client
+//             .batch_optional(json!({
+//                 "limit": 1,
+//                 "evmExecuted": [{
+//                     "contract": "0x0000000000000000000100000000000000000080",
+//                     "filter": topics,
+//                 }],
+//             }))
+//             .await;
+//         assert!(batch.is_some() == has_result);
+//         if let Some(batch) = batch {
+//             let event = &batch.events[0];
+//             assert!(event.id == "0001818666-000011-af202");
+//             assert!(event.name == "EVM.Executed");
+//         }
+//     }
+// }

@@ -23,14 +23,11 @@ impl EventSelection {
 impl EvmLogSelection {
     pub fn r#match(&self, log: &EvmLog) -> bool {
         if let Some(args) = &log.args {
-            if let Some(value) = args.get("address") {
-                if let Some(address) = value.as_str() {
-                    if self.contract_match(address) && self.filter_match(log) {
-                        return true;
-                    }
-                }
+            if let Some(address) = self.get_address(args) {
+                return self.contract_match(address) && self.filter_match(log)
             }
         }
+
         false
     }
 
@@ -67,6 +64,22 @@ impl EvmLogSelection {
                     if let Some(topic) = value.as_str() {
                         return Some(topic.to_string())
                     }
+                }
+            }
+        }
+        None
+    }
+
+    fn get_address<'a>(&'a self, args: &'a Value) -> Option<&str> {
+        if let Some(value) = args.get("address") {
+            if let Some(address) = value.as_str() {
+                return Some(address)
+            }
+        }
+        if let Some(log) = args.get("log") {
+            if let Some(value) = log.get("address") {
+                if let Some(address) = value.as_str() {
+                    return Some(address)
                 }
             }
         }

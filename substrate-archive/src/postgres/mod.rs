@@ -10,6 +10,7 @@ mod fields;
 mod serializer;
 mod batch;
 
+#[derive(Debug)]
 pub struct PostgresArchive {
     pool: Pool<Postgres>,
 }
@@ -56,6 +57,11 @@ impl ArchiveService for PostgresArchive {
             .await?
             .unwrap_or_else(|| Status { head: -1 });
         Ok(status)
+    }
+
+    #[tracing::instrument(target="query")]
+    async fn test(&self) -> Result<Status, Error> {
+        Ok(Status { head: 1 })
     }
 }
 

@@ -1,3 +1,4 @@
+use std::{thread, time, fmt};
 use substrate_archive::{ArchiveService, BatchOptions};
 use substrate_archive::selection::{
     EventSelection, CallSelection, EvmLogSelection,
@@ -69,6 +70,7 @@ fn batch_to_camel_case(batch: &mut Vec<Batch>) {
     }
 }
 
+
 pub struct QueryRoot {
     pub archive: Box<dyn ArchiveService<
         Batch = Batch,
@@ -77,6 +79,11 @@ pub struct QueryRoot {
         Status = Status,
         Error = Error,
     > + Send + Sync>,
+}
+impl fmt::Debug for QueryRoot {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "QueryRoot")
+    }
 }
 
 #[Object]
@@ -148,6 +155,13 @@ impl QueryRoot {
         let status = self.archive.status().await?.into();
         Ok(status)
     }
+
+    #[tracing::instrument(level = "info")]
+    async fn test(&self) -> Result<StatusObject> {
+        let _m = QueryRoot::long_action();
+
+        Ok(Status { head: -1 }.into())
+    }
 }
 
 impl QueryRoot {
@@ -157,5 +171,11 @@ impl QueryRoot {
                 .map(|selection| U::from(selection))
                 .collect()
         })
+    }
+
+    #[tracing::instrument(level = "info")]
+    fn long_action() -> bool {
+        thread::sleep(time::Duration::from_millis(500));
+        true
     }
 }

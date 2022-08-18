@@ -111,3 +111,4 @@ impl From<Batch> for BatchObject {
         BatchObject(batch)
     }
 }
+

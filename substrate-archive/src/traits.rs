@@ -10,4 +10,5 @@ pub trait ArchiveService {
     async fn metadata(&self) -> Result<Vec<Self::Metadata>, Self::Error>;
     async fn metadata_by_id(&self, id: String) -> Result<Option<Self::Metadata>, Self::Error>;
     async fn status(&self) -> Result<Self::Status, Self::Error>;
+    async fn test(&self) -> Result<Self::Status, Self::Error>;
 }

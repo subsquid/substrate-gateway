@@ -81,6 +81,7 @@ pub struct EvmLogSelection {
 #[derive(Debug)]
 pub struct EthTransactSelection {
     pub contract: String,
+    pub sighash: Option<String>,
     pub data: CallDataSelection,
 }
 

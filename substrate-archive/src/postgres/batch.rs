@@ -834,26 +834,77 @@ impl<'a> BatchLoader<'a> {
 
     async fn load_eth_transactions(&self) -> Result<Vec<Call>, Error> {
         if self.eth_transact_selections.is_empty() {
-            return Ok(Vec::new());
+            return Ok(Vec::new())
         }
-        let from_block = format!("{:010}", self.from_block);
-        let to_block = self.to_block.map(|to_block| format!("{:010}", to_block + 1));
-        let contracts = self.eth_transact_selections.iter()
-            .map(|selection| selection.contract.clone())
-            .collect::<Vec<String>>();
-        let query = "WITH RECURSIVE recursive_call AS (
-                SELECT * FROM call WHERE contract = ANY($1) AND block_id IN (
-                    SELECT DISTINCT block_id FROM call
-                    WHERE contract = ANY($1)
-                        AND block_id > $2 AND ($3 IS null OR block_id < $3)
-                    ORDER BY block_id
-                    LIMIT $4
-                )
-                UNION ALL
-                SELECT DISTINCT ON (call.id) call.*
-                FROM call JOIN recursive_call ON recursive_call.parent_id = call.id
-            )
-            SELECT
+        let mut ids = Vec::new();
+        for selection in self.eth_transact_selections {
+            let mut selection_ids: Vec<String> = Vec::new();
+            let mut blocks = HashSet::new();
+            let limit: i64 = 2000;
+
+            let mut id_gt = format!("{:010}", self.from_block);
+            let id_lt = self.to_block.map(|to_block| format!("{:010}", to_block + 1));
+
+            'outer: loop {
+                let mut query = String::from("SELECT call_id
+                    FROM frontier_ethereum_transaction
+                    WHERE call_id > $1");
+                let mut args = PgArguments::default();
+                args.add(&id_gt);
+                let mut args_len = 1;
+                if selection.contract != "*" {
+                    args_len += 1;
+                    args.add(&selection.contract);
+                    query.push_str(&format!(" AND contract = ${}", args_len));
+                }
+                if let Some(id_lt) = &id_lt {
+                    args_len += 1;
+                    args.add(id_lt);
+                    query.push_str(&format!(" AND call_id < ${}", args_len));
+                }
+                if let Some(sighash) = &selection.sighash {
+                    args_len += 1;
+                    args.add(sighash);
+                    query.push_str(&format!(" AND sighash = ${}", args_len));
+                }
+                args_len += 1;
+                args.add(limit);
+                query.push_str(&format!(" LIMIT ${}", args_len));
+
+                let result = sqlx::query_scalar_with::<_, String, _>(&query, args)
+                    .fetch_all(&self.pool)
+                    .observe_duration("frontier_ethereum_transaction")
+                    .await?;
+                if result.is_empty() {
+                    break
+                } else {
+                    for id in result {
+                        let block_id = id.split('-').next().unwrap().to_string();
+                        if blocks.len() == self.limit as usize && !blocks.contains(&block_id) {
+                            break 'outer;
+                        }
+                        blocks.insert(block_id);
+                        selection_ids.push(id);
+                    }
+
+                    id_gt = selection_ids.last().unwrap().clone();
+                }
+            }
+            ids.append(&mut selection_ids);
+        }
+        ids.sort();
+        ids.dedup();
+        let mut blocks = HashSet::new();
+        ids.retain(|id| {
+            let block_id = id.split('-').next().unwrap().to_string();
+            if blocks.len() == self.limit as usize && !blocks.contains(&block_id) {
+                false
+            } else {
+                blocks.insert(block_id);
+                true
+            }
+        });
+        let query = "SELECT
                 id,
                 parent_id,
                 block_id,
@@ -864,17 +915,47 @@ impl<'a> BatchLoader<'a> {
                 error,
                 origin,
                 pos::int8
-            FROM recursive_call
-            ORDER BY block_id";
-        let transactions = sqlx::query_as::<_, Call>(&query)
-            .bind(contracts)
-            .bind(from_block)
-            .bind(to_block)
-            .bind(self.limit)
+            FROM call WHERE id = ANY($1::varchar(30)[])";
+        let mut calls = sqlx::query_as::<_, Call>(query)
+            .bind(&ids)
             .fetch_all(&self.pool)
             .observe_duration("call")
             .await?;
-        Ok(transactions)
+
+        let mut parents_ids: Vec<String> = calls.iter()
+            .filter_map(|call| call.parent_id.clone())
+            .collect();
+        parents_ids.sort();
+        parents_ids.dedup();
+        while !parents_ids.is_empty() {
+            let to_load: Vec<String> = parents_ids.iter()
+                .filter_map(|parent_id| {
+                    let loaded = calls.iter().any(|call| &call.id == parent_id);
+                    if loaded {
+                        None
+                    } else {
+                        Some(parent_id.clone())
+                    }
+                })
+                .collect();
+            if !to_load.is_empty() {
+                let mut parents = sqlx::query_as::<_, Call>(query)
+                    .bind(to_load)
+                    .fetch_all(&self.pool)
+                    .observe_duration("call")
+                    .await?;
+                calls.append(&mut parents);
+            }
+            parents_ids = parents_ids.iter()
+                .filter_map(|parent_id| {
+                    let call = calls.iter().find(|call| &call.id == parent_id).unwrap();
+                    call.parent_id.clone()
+                })
+                .collect();
+            parents_ids.sort();
+            parents_ids.dedup();
+        }
+        Ok(calls)
     }
 
     fn get_block_ids(

@@ -91,22 +91,46 @@ impl EthTransactSelection {
     pub fn r#match(&self, call: &Call) -> bool {
         if let Some(args) = &call.args {
             if let Some(transaction) = args.get("transaction") {
-                let mut action = transaction.get("action");
-                if action.is_none() {
-                    if let Some(value) = transaction.get("value") {
-                        action = value.get("action");
-                    }
-                }
-                if let Some(action) = action {
-                    if let Some(value) = action.get("value") {
-                        if let Some(value) = value.as_str() {
-                            return value == self.contract
-                        }
-                    }
+                if let Some(address) = self.get_transaction_address(transaction) {
+                    return self.contract_match(address) && self.sighash_match(transaction)
                 }
             }
         }
         false
+    }
+
+    fn sighash_match(&self, args: &Value) -> bool {
+        if let Some(sighash) = &self.sighash {
+            if let Some(value) = args.get("input") {
+                if let Some(input) = value.as_str() {
+                    return sighash == &input[..10].to_string()
+                } {
+                    return false
+                }
+            }
+            return false
+        }
+        true
+    }
+
+    fn contract_match(&self, address: &str) -> bool {
+        self.contract == WILDCARD || self.contract == address
+    }
+
+    fn get_transaction_address<'a>(&'a self, transaction: &'a Value) -> Option<&str> {
+        let action = transaction.get("action")
+            .or_else(|| {
+                transaction.get("value")
+                    .and_then(|value| value.get("action"))
+            });
+        if let Some(action) = action {
+            if let Some(value) = action.get("value") {
+                if let Some(value) = value.as_str() {
+                    return Some(value);
+                }
+            }
+        }
+        None
     }
 }
 

@@ -47,8 +47,7 @@ CREATE TABLE call (
     origin jsonb,
     name varchar not null,
     args jsonb,
-    pos integer not null,
-    contract varchar
+    pos integer not null
 );
 
 
@@ -102,4 +101,10 @@ CREATE TABLE frontier_evm_log (
     topic1 char(66),
     topic2 char(66),
     topic3 char(66)
+);
+
+CREATE TABLE frontier_ethereum_transaction (
+    call_id varchar(30) primary key references call,
+    contract char(42) not null,
+    sighash varchar(10)
 );

@@ -129,6 +129,23 @@ async fn test_ethereum_transactions() {
 }
 
 #[actix_web::test]
+async fn test_ethereum_transactions_wildcard_search() {
+    launch_gateway();
+    let client = Client::new();
+    let batch = client
+        .batch(json!({
+            "limit": 1,
+            "ethereumTransactions": [{
+                "contract": "*",
+                "sighash": "0xd0def521"
+            }]
+        }))
+        .await;
+    let call = &batch.calls[0];
+    assert!(call.id == "0000569006-000018-5e412");
+}
+
+#[actix_web::test]
 async fn test_contracts_events() {
     launch_gateway();
     let client = Client::new();

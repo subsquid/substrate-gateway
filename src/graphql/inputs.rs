@@ -313,6 +313,7 @@ impl From<EvmLogSelectionInput> for EvmLogSelection {
 #[graphql(name = "EthereumTransactionSelection")]
 pub struct EthTransactSelectionInput {
     pub contract: String,
+    pub sighash: Option<String>,
     pub data: Option<CallDataSelectionInput>,
 }
 
@@ -321,6 +322,7 @@ impl From<EthTransactSelectionInput> for EthTransactSelection {
     fn from(selection: EthTransactSelectionInput) -> Self {
         EthTransactSelection {
             contract: selection.contract,
+            sighash: selection.sighash,
             data: selection.data.map_or_else(|| {
                 CallDataSelection::new(true)
             }, |data| {

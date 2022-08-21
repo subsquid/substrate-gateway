@@ -505,6 +505,7 @@ impl<'a> BatchLoader<'a> {
                 args.add(id_lt);
                 query.push_str(&format!(" AND event_id < ${}", args_len));
             }
+            query.push_str(" ORDER BY event_id");
             args_len += 1;
             args.add(limit);
             query.push_str(&format!(" LIMIT ${}", args_len));
@@ -564,6 +565,7 @@ impl<'a> BatchLoader<'a> {
                 args.add(id_lt);
                 query.push_str(&format!(" AND event_id < ${}", args_len));
             }
+            query.push_str(" ORDER BY event_id");
             args_len += 1;
             args.add(limit);
             query.push_str(&format!(" LIMIT ${}", args_len));
@@ -700,6 +702,7 @@ impl<'a> BatchLoader<'a> {
                 args.add(id_lt);
                 query.push_str(&format!(" AND event_id < ${}", args_len));
             }
+            query.push_str(" ORDER BY event_id");
             args_len += 1;
             args.add(limit);
             query.push_str(&format!(" LIMIT ${}", args_len));
@@ -771,6 +774,7 @@ impl<'a> BatchLoader<'a> {
                         }
                     }
                 }
+                query.push_str(" ORDER BY event_id");
                 args_len += 1;
                 args.add(limit);
                 query.push_str(&format!(" LIMIT ${}", args_len));
@@ -867,6 +871,7 @@ impl<'a> BatchLoader<'a> {
                     args.add(sighash);
                     query.push_str(&format!(" AND sighash = ${}", args_len));
                 }
+                query.push_str(" ORDER BY call_id");
                 args_len += 1;
                 args.add(limit);
                 query.push_str(&format!(" LIMIT ${}", args_len));

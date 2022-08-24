@@ -341,7 +341,7 @@ impl<'a> BatchLoader<'a> {
 
         let build_args = |_last_id: Option<String>, len: usize, limit: i64| {
             let mut args = PgArguments::default();
-            let mut sql = String::from("SELECT id
+            let mut sql = String::from("SELECT block_id
                 FROM call
                 WHERE block_id > $1");
             let mut args_len = 1;
@@ -356,7 +356,7 @@ impl<'a> BatchLoader<'a> {
                 args.add(&names);
                 sql.push_str(&format!(" AND name = ANY(${})", args_len));
             }
-            sql.push_str(" ORDER BY block_id, id");
+            sql.push_str(" ORDER BY block_id");
             args_len += 1;
             args.add(len as i64);
             sql.push_str(&format!(" OFFSET ${}", args_len));
@@ -368,6 +368,29 @@ impl<'a> BatchLoader<'a> {
         };
         let chunk_limit = 5000;
         let ids = self.load_ids(build_args, "call", chunk_limit).await?;
+
+        let mut query = String::from("SELECT
+                id,
+                parent_id,
+                block_id,
+                extrinsic_id,
+                name,
+                args,
+                success,
+                error,
+                origin,
+                pos::int8
+            FROM call WHERE block_id = ANY($1::char(16)[])");
+        let mut args = PgArguments::default();
+        args.add(&ids);
+        if !wildcard {
+            query.push_str(&format!(" AND name = ANY($2)"));
+            args.add(&names)
+        }
+        let mut calls = sqlx::query_as_with::<_, Call, _>(&query, args)
+            .fetch_all(&self.pool)
+            .observe_duration("call")
+            .await?;
 
         let query = "SELECT
                 id,
@@ -381,12 +404,6 @@ impl<'a> BatchLoader<'a> {
                 origin,
                 pos::int8
             FROM call WHERE id = ANY($1::varchar(30)[])";
-        let mut calls = sqlx::query_as::<_, Call>(query)
-            .bind(&ids)
-            .fetch_all(&self.pool)
-            .observe_duration("call")
-            .await?;
-
         let mut parents_ids: Vec<String> = calls.iter()
             .filter_map(|call| call.parent_id.clone())
             .collect();
@@ -468,7 +485,7 @@ impl<'a> BatchLoader<'a> {
 
         let build_args = |_last_id: Option<String>, len: usize, limit: i64| {
             let mut args = PgArguments::default();
-            let mut sql = String::from("SELECT id
+            let mut sql = String::from("SELECT block_id
                 FROM event
                 WHERE block_id > $1");
             let mut args_len = 1;
@@ -483,7 +500,7 @@ impl<'a> BatchLoader<'a> {
                 args.add(&names);
                 sql.push_str(&format!(" AND name = ANY(${})", args_len));
             }
-            sql.push_str(" ORDER BY block_id, id");
+            sql.push_str(" ORDER BY block_id");
             args_len += 1;
             args.add(len as i64);
             sql.push_str(&format!(" OFFSET ${}", args_len));
@@ -496,8 +513,25 @@ impl<'a> BatchLoader<'a> {
         let chunk_limit = 5000;
         let ids = self.load_ids(build_args, "event", chunk_limit).await?;
 
-        let events = sqlx::query_as::<_, Event>(EVENTS_BY_ID_QUERY)
-            .bind(&ids)
+        let mut query = String::from("SELECT
+                id,
+                block_id,
+                index_in_block::int8,
+                phase,
+                extrinsic_id,
+                call_id,
+                name,
+                args,
+                pos::int8
+            FROM event
+            WHERE block_id = ANY($1::char(16)[])");
+        let mut args = PgArguments::default();
+        args.add(&ids);
+        if !wildcard {
+            query.push_str(&format!(" AND name = ANY($2)"));
+            args.add(&names)
+        }
+        let events = sqlx::query_as_with::<_, Event, _>(&query, args)
             .fetch_all(&self.pool)
             .observe_duration("event")
             .await?;

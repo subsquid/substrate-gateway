@@ -328,21 +328,46 @@ impl<'a> BatchLoader<'a> {
         if self.call_selections.is_empty() {
             return Ok(Vec::new());
         }
+        let wildcard = self.call_selections
+            .iter()
+            .any(|selection| selection.name == "*");
+        let names = self.call_selections
+            .iter()
+            .map(|selection| selection.name.clone())
+            .collect::<Vec<String>>();
+
         let from_block = format!("{:010}", self.from_block);
         let to_block = self.to_block.map(|to_block| format!("{:010}", to_block + 1));
 
-        let mut wildcard = false;
-        let mut names = Vec::new();
-        for selection in self.call_selections {
-            if selection.name == "*" {
-                wildcard = true;
-            } else {
-                names.push(selection.name.clone());
+        let build_args = |_last_id: Option<String>, len: usize, limit: i64| {
+            let mut args = PgArguments::default();
+            let mut sql = String::from("SELECT id
+                FROM call
+                WHERE block_id > $1");
+            let mut args_len = 1;
+            args.add(&from_block);
+            if let Some(to_block) = &to_block {
+                args_len += 1;
+                args.add(to_block);
+                sql.push_str(&format!(" AND block_id < ${}", args_len));
             }
-        }
+            if !wildcard {
+                args_len += 1;
+                args.add(&names);
+                sql.push_str(&format!(" AND name = ANY(${})", args_len));
+            }
+            sql.push_str(" ORDER BY block_id, id");
+            args_len += 1;
+            args.add(len as i64);
+            sql.push_str(&format!(" OFFSET ${}", args_len));
+            args_len += 1;
+            args.add(limit);
+            sql.push_str(&format!(" LIMIT ${}", args_len));
 
-        let id_query = Box::new(CallIdQuery { wildcard, names, from_block, to_block });
-        let ids = self.load_ids(id_query).await?;
+            (sql, args)
+        };
+        let chunk_limit = 5000;
+        let ids = self.load_ids(build_args, "call", chunk_limit).await?;
 
         let query = "SELECT
                 id,
@@ -430,20 +455,47 @@ impl<'a> BatchLoader<'a> {
         if self.event_selections.is_empty() {
             return Ok(Vec::new());
         }
-        let mut wildcard = false;
-        let mut names = Vec::new();
-        for selection in self.event_selections {
-            if selection.name == "*" {
-                wildcard = true;
-            } else {
-                names.push(selection.name.clone());
-            }
-        }
+        let wildcard = self.event_selections
+            .iter()
+            .any(|selection| selection.name == "*");
+        let names = self.event_selections
+            .iter()
+            .map(|selection| selection.name.clone())
+            .collect::<Vec<String>>();
+
         let from_block = format!("{:010}", self.from_block);
         let to_block = self.to_block.map(|to_block| format!("{:010}", to_block + 1));
 
-        let id_query = Box::new(EventIdQuery { wildcard, names, from_block, to_block });
-        let ids = self.load_ids(id_query).await?;
+        let build_args = |_last_id: Option<String>, len: usize, limit: i64| {
+            let mut args = PgArguments::default();
+            let mut sql = String::from("SELECT id
+                FROM event
+                WHERE block_id > $1");
+            let mut args_len = 1;
+            args.add(&from_block);
+            if let Some(to_block) = &to_block {
+                args_len += 1;
+                args.add(to_block);
+                sql.push_str(&format!(" AND block_id < ${}", args_len));
+            }
+            if !wildcard {
+                args_len += 1;
+                args.add(&names);
+                sql.push_str(&format!(" AND name = ANY(${})", args_len));
+            }
+            sql.push_str(" ORDER BY block_id, id");
+            args_len += 1;
+            args.add(len as i64);
+            sql.push_str(&format!(" OFFSET ${}", args_len));
+            args_len += 1;
+            args.add(limit);
+            sql.push_str(&format!(" LIMIT ${}", args_len));
+
+            (sql, args)
+        };
+        let chunk_limit = 5000;
+        let ids = self.load_ids(build_args, "event", chunk_limit).await?;
+
         let events = sqlx::query_as::<_, Event>(EVENTS_BY_ID_QUERY)
             .bind(&ids)
             .fetch_all(&self.pool)
@@ -452,19 +504,26 @@ impl<'a> BatchLoader<'a> {
         Ok(events)
     }
 
-    async fn load_ids(&self, query: Box<dyn IdQuery + Send>) -> Result<Vec<String>, Error> {
+    async fn load_ids(
+        &self,
+        build_args: impl Fn(Option<String>, usize, i64) -> (String, PgArguments),
+        db_table: &'static str,
+        limit: i64,
+    ) -> Result<Vec<String>, Error> {
         let mut ids = Vec::new();
         let mut blocks = HashSet::new();
-        let mut offset: i64 = 0;
-        let limit: i64 = 5000;
+        let mut last_id = None;
 
         'outer: loop {
-            let fut = query.execute(offset, limit, &self.pool);
-            let result = fut.await?;
+            let (sql, args) = build_args(last_id, ids.len(), limit);
+            let result = sqlx::query_scalar_with::<_, String, _>(&sql, args)
+                .fetch_all(&self.pool)
+                .observe_duration(db_table)
+                .await?;
             if result.is_empty() {
                 break
             } else {
-                for (id,) in result {
+                for id in result {
                     let block_id = id.split('-').next().unwrap().to_string();
                     if blocks.len() == self.limit as usize && !blocks.contains(&block_id) {
                         break 'outer;
@@ -472,7 +531,7 @@ impl<'a> BatchLoader<'a> {
                     blocks.insert(block_id);
                     ids.push(id);
                 }
-                offset += limit;
+                last_id = ids.last().cloned();
             }
         }
         Ok(ids)
@@ -1151,88 +1210,5 @@ impl BatchOptions {
             gear_user_message_sent_selections: &self.gear_user_message_sent_selections,
             evm_executed_selections: &self.evm_executed_selections,
         }
-    }
-}
-
-
-#[async_trait::async_trait]
-trait IdQuery {
-    async fn execute(
-        &self,
-        offset: i64,
-        limit: i64,
-        pool: &Pool<Postgres>
-    ) -> Result<Vec<(String,)>, Error>;
-}
-
-struct EventIdQuery {
-    wildcard: bool,
-    names: Vec<String>,
-    from_block: String,
-    to_block: Option<String>,
-}
-
-#[async_trait::async_trait]
-impl IdQuery for EventIdQuery {
-    async fn execute(
-        &self,
-        offset: i64,
-        limit: i64,
-        pool: &Pool<Postgres>
-    ) -> Result<Vec<(String,)>, Error> {
-        let query = "SELECT id
-            FROM event
-            WHERE ($1 OR name = ANY($2))
-                AND block_id > $3 AND ($4 IS null OR block_id < $4)
-            ORDER BY block_id, id
-            OFFSET $5
-            LIMIT $6";
-        let result = sqlx::query_as::<_, (String,)>(query)
-            .bind(self.wildcard)
-            .bind(&self.names)
-            .bind(&self.from_block)
-            .bind(&self.to_block)
-            .bind(offset)
-            .bind(limit)
-            .fetch_all(pool)
-            .observe_duration("event")
-            .await?;
-        Ok(result)
-    }
-}
-
-struct CallIdQuery {
-    wildcard: bool,
-    names: Vec<String>,
-    from_block: String,
-    to_block: Option<String>,
-}
-
-#[async_trait::async_trait]
-impl IdQuery for CallIdQuery {
-    async fn execute(
-        &self,
-        offset: i64,
-        limit: i64,
-        pool: &Pool<Postgres>
-    ) -> Result<Vec<(String,)>, Error> {
-        let query = "SELECT id
-            FROM call
-            WHERE ($1 OR name = ANY($2))
-                AND block_id > $3 AND ($4 IS null OR block_id < $4)
-            ORDER BY block_id, id
-            OFFSET $5
-            LIMIT $6";
-        let result = sqlx::query_as::<_, (String,)>(query)
-            .bind(self.wildcard)
-            .bind(&self.names)
-            .bind(&self.from_block)
-            .bind(&self.to_block)
-            .bind(offset)
-            .bind(limit)
-            .fetch_all(pool)
-            .observe_duration("call")
-            .await?;
-        Ok(result)
     }
 }

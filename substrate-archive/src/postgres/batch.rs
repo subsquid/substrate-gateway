@@ -441,8 +441,12 @@ impl<'a> BatchLoader<'a> {
     }
 
     async fn load_calls_by_ids(&self, ids: &Vec<String>) -> Result<Vec<Call>, Error> {
-        let query = "WITH RECURSIVE recursive_call AS (
-                SELECT * FROM call WHERE id = ANY($1::varchar(30)[])
+        // i inject ids into the query otherwise it executes so long
+        let ids = ids.iter().map(|id| format!("'{}'", id))
+            .collect::<Vec<String>>()
+            .join(", ");
+        let query = format!("WITH RECURSIVE recursive_call AS (
+                SELECT * FROM call WHERE id IN ({})
                 UNION ALL
                 SELECT DISTINCT ON (call.id) call.*
                 FROM call JOIN recursive_call ON recursive_call.parent_id = call.id
@@ -459,9 +463,8 @@ impl<'a> BatchLoader<'a> {
                 origin,
                 pos::int8
             FROM recursive_call
-            ORDER BY block_id";
-        let calls = sqlx::query_as::<_, Call>(query)
-            .bind(ids)
+            ORDER BY block_id", ids);
+        let calls = sqlx::query_as::<_, Call>(&query)
             .fetch_all(&self.pool)
             .observe_duration("call")
             .await?;

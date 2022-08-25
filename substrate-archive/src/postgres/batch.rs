@@ -893,18 +893,7 @@ impl<'a> BatchLoader<'a> {
             }
             ids.append(&mut log_ids);
         }
-        ids.sort();
-        ids.dedup();
-        let mut blocks = HashSet::new();
-        ids.retain(|id| {
-            let block_id = id.split('-').next().unwrap().to_string();
-            if blocks.len() == self.limit as usize && !blocks.contains(&block_id) {
-                false
-            } else {
-                blocks.insert(block_id);
-                true
-            }
-        });
+        self.trim_ids(&mut ids);
         let query = "SELECT
                 event.id,
                 event.block_id,
@@ -990,18 +979,7 @@ impl<'a> BatchLoader<'a> {
             }
             ids.append(&mut selection_ids);
         }
-        ids.sort();
-        ids.dedup();
-        let mut blocks = HashSet::new();
-        ids.retain(|id| {
-            let block_id = id.split('-').next().unwrap().to_string();
-            if blocks.len() == self.limit as usize && !blocks.contains(&block_id) {
-                false
-            } else {
-                blocks.insert(block_id);
-                true
-            }
-        });
+        self.trim_ids(&mut ids);
         let query = "SELECT
                 id,
                 parent_id,
@@ -1224,6 +1202,21 @@ impl<'a> BatchLoader<'a> {
                 }
             }
         }
+    }
+
+    fn trim_ids(&self, ids: &mut Vec<String>) {
+        ids.sort();
+        ids.dedup();
+        let mut blocks = HashSet::new();
+        ids.retain(|id| {
+            let block_id = id.split('-').next().unwrap().to_string();
+            if blocks.len() == self.limit as usize && !blocks.contains(&block_id) {
+                false
+            } else {
+                blocks.insert(block_id);
+                true
+            }
+        });
     }
 }
 

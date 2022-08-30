@@ -309,8 +309,8 @@ impl<'a> BatchLoader<'a> {
         let mut calls_by_block: HashMap<String, Vec<serde_json::Value>> = HashMap::new();
         calls.append(&mut eth_transactions);
         for call in calls {
-            if let Some(fields) = call_fields.get(&call.id) {
-                let serializer = CallSerializer { call: &call, fields };
+            if let Some(fields) = call_fields.remove(&call.id) {
+                let serializer = CallSerializer { call: &call, fields: &fields };
                 let data = serde_json::to_value(serializer).unwrap();
                 if let Some(calls) = calls_by_block.get_mut(&call.block_id) {
                     calls.push(data);
@@ -1104,13 +1104,9 @@ impl<'a> BatchLoader<'a> {
                 let event_fields = vec!["id", "block_id", "index_in_block", "phase", "evm_tx_hash",
                                         "extrinsic_id", "call_id", "name", "args", "pos"];
                 let deduplicated_events = unify_and_merge(events, event_fields);
-                let calls = calls_by_block.remove(&block.id).unwrap_or_default();
-                let call_fields = vec!["id", "parent_id", "block_id", "extrinsic_id", "success",
-                                       "error", "origin", "name", "args", "pos"];
-                let deduplicated_calls = unify_and_merge(calls, call_fields);
                 Batch {
                     extrinsics: extrinsics_by_block.remove(&block.id).unwrap_or_default(),
-                    calls: deduplicated_calls,
+                    calls: calls_by_block.remove(&block.id).unwrap_or_default(),
                     events: deduplicated_events,
                     header: block,
                 }

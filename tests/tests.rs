@@ -62,6 +62,22 @@ async fn test_parent_call_skipped() {
 }
 
 #[actix_web::test]
+async fn test_returned_calls_are_unique() {
+    launch_gateway();
+    let client = Client::new();
+    let batch = client
+        .batch(json!({
+            "limit": 1,
+            "calls": [{"name": "Ethereum.transact"}],
+            "ethereumTransactions": [{"contract": "0xb654611f84a8dc429ba3cb4fda9fad236c505a1a"}],
+        }))
+        .await;
+    let call = &batch.calls[0];
+    assert!(batch.calls.len() == 1);
+    assert!(call.id == "0000569006-000018-5e412");
+}
+
+#[actix_web::test]
 async fn test_event_loads_related_call() {
     launch_gateway();
     let client = Client::new();

@@ -84,6 +84,14 @@ impl<'a> BatchLoader<'a> {
 
         let mut call_fields_to_load: HashMap<String, CallFields> = HashMap::new();
 
+        let mut call_lookup: HashMap<String, &Call> = HashMap::new();
+        for call in &eth_transactions {
+            call_lookup.insert(call.id.clone(), call);
+        }
+        for call in &calls {
+            call_lookup.insert(call.id.clone(), call);
+        }
+
         for call in &eth_transactions {
             for selection in self.eth_transact_selections {
                 if selection.r#match(call) {
@@ -103,7 +111,7 @@ impl<'a> BatchLoader<'a> {
                             );
                         }
                     }
-                    self.visit_parent_call(&call, &selection.data, &calls, &mut call_fields);
+                    self.visit_parent_call(&call, &selection.data, &call_lookup, &mut call_fields);
                 }
             }
         }
@@ -126,7 +134,7 @@ impl<'a> BatchLoader<'a> {
                             );
                         }
                     }
-                    self.visit_parent_call(&call, &selection.data, &calls, &mut call_fields);
+                    self.visit_parent_call(&call, &selection.data, &call_lookup, &mut call_fields);
                 }
             }
         }
@@ -257,13 +265,17 @@ impl<'a> BatchLoader<'a> {
         if !call_fields_to_load.is_empty() {
             let call_ids = call_fields_to_load.keys().cloned().collect();
             let mut additional_calls = self.load_calls_by_ids(&call_ids).await?;
+            let mut call_lookup: HashMap<String, &Call> = HashMap::new();
+            for call in &additional_calls {
+                call_lookup.insert(call.id.clone(), call);
+            }
             for call in &additional_calls {
                 if let Some(fields) = call_fields_to_load.remove(&call.id) {
                     let data_selection = CallDataSelection {
                         call: fields,
                         extrinsic: ExtrinsicFields::new(false),
                     };
-                    self.visit_parent_call(call, &data_selection, &additional_calls, &mut call_fields);
+                    self.visit_parent_call(call, &data_selection, &call_lookup, &mut call_fields);
                     call_fields.insert(call.id.clone(), data_selection);
                 }
             }
@@ -1110,18 +1122,18 @@ impl<'a> BatchLoader<'a> {
         &self,
         call: &Call,
         data: &CallDataSelection,
-        calls: &Vec<Call>,
+        call_lookup: &HashMap<String, &Call>,
         call_fields: &mut HashMap<String, CallDataSelection>,
     ) {
         if let Some(parent_id) = &call.parent_id {
             if data.call.parent.any() {
-                let parent = calls.iter().find(|call| &call.id == parent_id)
+                let parent = call_lookup.get(parent_id)
                     .expect("parent call expected to be loaded");
                 let parent_fields = CallDataSelection {
                     call: CallFields::from_parent(&data.call.parent),
                     extrinsic: ExtrinsicFields::new(false),
                 };
-                self.visit_parent_call(&parent, &parent_fields, calls, call_fields);
+                self.visit_parent_call(&parent, &parent_fields, call_lookup, call_fields);
                 if let Some(fields) = call_fields.get_mut(&parent.id) {
                     fields.call.merge(&parent_fields.call);
                     fields.extrinsic.merge(&parent_fields.extrinsic);

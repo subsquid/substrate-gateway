@@ -54,27 +54,32 @@ impl<'a> BatchLoader<'a> {
         let mut messages_enqueued = self.load_messages_enqueued().await?;
         let mut messages_sent = self.load_messages_sent().await?;
         let mut evm_executed = self.load_evm_executed().await?;
+
         let blocks = if self.include_all_blocks {
-            let blocks = self.get_blocks().await?;
-            blocks
+            self.load_blocks().await?
         } else {
-            let block_ids = self.get_block_ids(&calls, &events, &evm_logs, &eth_transactions,
-                                               &contracts_events, &messages_enqueued,
-                                               &messages_sent, &evm_executed);
-            calls = calls.into_iter().filter(|call| block_ids.contains(&call.block_id)).collect();
-            events = events.into_iter().filter(|event| block_ids.contains(&event.block_id)).collect();
-            evm_logs = evm_logs.into_iter().filter(|log| block_ids.contains(&log.block_id)).collect();
-            eth_transactions = eth_transactions.into_iter()
-                .filter(|transaction| block_ids.contains(&transaction.block_id)).collect();
-            contracts_events = contracts_events.into_iter()
-                .filter(|event| block_ids.contains(&event.block_id)).collect();
-            messages_enqueued = messages_enqueued.into_iter()
-                .filter(|event| block_ids.contains(&event.block_id)).collect();
-            messages_sent = messages_sent.into_iter()
-                .filter(|event| block_ids.contains(&event.block_id)).collect();
-            evm_executed = evm_executed.into_iter()
-                .filter(|event| block_ids.contains(&event.block_id)).collect();
-            self.get_blocks_by_ids(&block_ids).await?
+            let mut block_ids = vec![];
+            calls.iter().for_each(|call| block_ids.push(call.block_id.clone()));
+            events.iter().for_each(|event| block_ids.push(event.block_id.clone()));
+            evm_logs.iter().for_each(|log| block_ids.push(log.block_id.clone()));
+            eth_transactions.iter().for_each(|call| block_ids.push(call.block_id.clone()));
+            contracts_events.iter().for_each(|event| block_ids.push(event.block_id.clone()));
+            messages_enqueued.iter().for_each(|event| block_ids.push(event.block_id.clone()));
+            messages_sent.iter().for_each(|event| block_ids.push(event.block_id.clone()));
+            evm_executed.iter().for_each(|event| block_ids.push(event.block_id.clone()));
+            block_ids.sort();
+            block_ids.dedup();
+            block_ids.truncate(self.limit as usize);
+
+            calls.retain(|call| block_ids.contains(&call.block_id));
+            events.retain(|event| block_ids.contains(&event.block_id));
+            evm_logs.retain(|evm_log| block_ids.contains(&evm_log.block_id));
+            eth_transactions.retain(|call| block_ids.contains(&call.block_id));
+            contracts_events.retain(|event| block_ids.contains(&event.block_id));
+            messages_enqueued.retain(|event| block_ids.contains(&event.block_id));
+            messages_sent.retain(|event| block_ids.contains(&event.block_id));
+            evm_executed.retain(|event| block_ids.contains(&event.block_id));
+            self.load_blocks_by_ids(&block_ids).await?
         };
 
         let mut extrinsic_fields: HashMap<String, ExtrinsicFields> = HashMap::new();
@@ -974,49 +979,7 @@ impl<'a> BatchLoader<'a> {
         Ok(calls)
     }
 
-    fn get_block_ids(
-        &self,
-        calls: &Vec<Call>,
-        events: &Vec<Event>,
-        evm_logs: &Vec<EvmLog>,
-        eth_transactions: &Vec<Call>,
-        contracts_events: &Vec<Event>,
-        messages_enqueued: &Vec<Event>,
-        messages_sent: &Vec<Event>,
-        evm_executed: &Vec<Event>,
-    ) -> Vec<String> {
-        let mut block_ids = Vec::new();
-        for call in calls {
-            block_ids.push(call.block_id.clone());
-        }
-        for event in events {
-            block_ids.push(event.block_id.clone());
-        }
-        for log in evm_logs {
-            block_ids.push(log.block_id.clone());
-        }
-        for transaction in eth_transactions {
-            block_ids.push(transaction.block_id.clone());
-        }
-        for event in contracts_events {
-            block_ids.push(event.block_id.clone());
-        }
-        for event in messages_enqueued {
-            block_ids.push(event.block_id.clone());
-        }
-        for event in messages_sent {
-            block_ids.push(event.block_id.clone());
-        }
-        for event in evm_executed {
-            block_ids.push(event.block_id.clone());
-        }
-        block_ids.sort();
-        block_ids.dedup();
-        block_ids.truncate(self.limit as usize);
-        block_ids
-    }
-
-    async fn get_blocks_by_ids(&self, ids: &Vec<String>) -> Result<Vec<BlockHeader>, Error> {
+    async fn load_blocks_by_ids(&self, ids: &Vec<String>) -> Result<Vec<BlockHeader>, Error> {
         let query = "SELECT
                 id,
                 height::int8,
@@ -1037,7 +1000,7 @@ impl<'a> BatchLoader<'a> {
         Ok(blocks)
     }
 
-    async fn get_blocks(&self) -> Result<Vec<BlockHeader>, Error> {
+    async fn load_blocks(&self) -> Result<Vec<BlockHeader>, Error> {
         let query = "SELECT
                 id,
                 height::int8,
@@ -1101,8 +1064,8 @@ impl<'a> BatchLoader<'a> {
         blocks.into_iter()
             .map(|block| {
                 let events = events_by_block.remove(&block.id).unwrap_or_default();
-                let event_fields = vec!["id", "block_id", "index_in_block", "phase", "evm_tx_hash",
-                                        "extrinsic_id", "call_id", "name", "args", "pos"];
+                let event_fields = vec!["id", "blockId", "indexInBlock", "phase", "evmTxHash",
+                                        "extrinsicId", "callId", "name", "args", "pos"];
                 let deduplicated_events = unify_and_merge(events, event_fields);
                 Batch {
                     extrinsics: extrinsics_by_block.remove(&block.id).unwrap_or_default(),

@@ -7,8 +7,6 @@ use substrate_archive::selection::{
 };
 use substrate_archive::error::Error;
 use substrate_archive::entities::{Batch, Metadata, Status};
-use serde_json::{Map, Value};
-use convert_case::{Casing, Case};
 use async_graphql::{Context, Object, Result};
 use inputs::{
     EventSelectionInput, CallSelectionInput, EthTransactSelectionInput,
@@ -43,30 +41,6 @@ pub struct GearSupport(pub bool);
 
 fn is_gear_supported(ctx: &Context<'_>) -> bool {
     ctx.data_unchecked::<GearSupport>().0
-}
-
-fn keys_to_camel_case(map: &mut Map<String, Value>) {
-    *map = std::mem::take(map)
-        .into_iter()
-        .map(|(k, v)| (k.to_case(Case::Camel), v))
-        .collect();
-}
-
-fn batch_to_camel_case(batch: &mut Vec<Batch>) {
-    for item in batch {
-        for call in &mut item.calls {
-            let map = call.as_object_mut().unwrap();
-            keys_to_camel_case(map);
-        }
-        for event in &mut item.events {
-            let map = event.as_object_mut().unwrap();
-            keys_to_camel_case(map);
-        }
-        for extrinsic in &mut item.extrinsics {
-            let map = extrinsic.as_object_mut().unwrap();
-            keys_to_camel_case(map);
-        }
-    }
 }
 
 pub struct QueryRoot {
@@ -121,9 +95,9 @@ impl QueryRoot {
             evm_executed_selections: vec![],
             // evm_executed_selections: self.unwrap_selections::<EvmExecutedSelectionInput, EvmExecutedSelection>(evm_executed_selections),
         };
-        let mut batch = self.archive.batch(&options).await?;
-        batch_to_camel_case(&mut batch);
-        let batch = batch.into_iter()
+        let batch = self.archive.batch(&options)
+            .await?
+            .into_iter()
             .map(|batch| batch.into())
             .collect();
         Ok(batch)

@@ -16,10 +16,10 @@ impl<'a> serde::Serialize for ExtrinsicSerializer<'a> {
         state.serialize_field("pos", &self.extrinsic.pos)?;
         for field in fields {
             match field {
-                "index_in_block" => state.serialize_field("index_in_block", &self.extrinsic.index_in_block)?,
+                "index_in_block" => state.serialize_field("indexInBlock", &self.extrinsic.index_in_block)?,
                 "version" => state.serialize_field("version", &self.extrinsic.version)?,
                 "signature" => state.serialize_field("signature", &self.extrinsic.signature)?,
-                "call_id" => state.serialize_field("call_id", &self.extrinsic.call_id)?,
+                "call_id" => state.serialize_field("callId", &self.extrinsic.call_id)?,
                 "fee" => state.serialize_field("fee", &self.extrinsic.fee)?,
                 "tip" => state.serialize_field("tip", &self.extrinsic.tip)?,
                 "success" => state.serialize_field("success", &self.extrinsic.success)?,
@@ -46,10 +46,10 @@ impl<'a> serde::Serialize for EventSerializer<'a> {
         state.serialize_field("name", &self.event.name)?;
         for field in fields {
             match field {
-                "index_in_block" => state.serialize_field("index_in_block", &self.event.index_in_block)?,
+                "index_in_block" => state.serialize_field("indexInBlock", &self.event.index_in_block)?,
                 "phase" => state.serialize_field("phase", &self.event.phase)?,
-                "extrinsic_id" => state.serialize_field("extrinsic_id", &self.event.extrinsic_id)?,
-                "call_id" => state.serialize_field("call_id", &self.event.call_id)?,
+                "extrinsic_id" => state.serialize_field("extrinsicId", &self.event.extrinsic_id)?,
+                "call_id" => state.serialize_field("callId", &self.event.call_id)?,
                 "args" => state.serialize_field("args", &self.event.args)?,
                 _ => panic!("unexpected field"),
             };
@@ -72,12 +72,12 @@ impl<'a> serde::Serialize for EvmLogSerializer<'a> {
         state.serialize_field("name", &self.log.name)?;
         for field in fields {
             match field {
-                "index_in_block" => state.serialize_field("index_in_block", &self.log.index_in_block)?,
+                "index_in_block" => state.serialize_field("indexInBlock", &self.log.index_in_block)?,
                 "phase" => state.serialize_field("phase", &self.log.phase)?,
-                "extrinsic_id" => state.serialize_field("extrinsic_id", &self.log.extrinsic_id)?,
-                "call_id" => state.serialize_field("call_id", &self.log.call_id)?,
+                "extrinsic_id" => state.serialize_field("extrinsicId", &self.log.extrinsic_id)?,
+                "call_id" => state.serialize_field("callId", &self.log.call_id)?,
                 "args" => state.serialize_field("args", &self.log.args)?,
-                "evm_tx_hash" => state.serialize_field("evm_tx_hash", &self.log.evm_tx_hash)?,
+                "evm_tx_hash" => state.serialize_field("evmTxHash", &self.log.evm_tx_hash)?,
                 _ => panic!("unexpected field"),
             };
         }
@@ -103,8 +103,8 @@ impl<'a> serde::Serialize for CallSerializer<'a> {
                 "error" => state.serialize_field("error", &self.call.error)?,
                 "origin" => state.serialize_field("origin", &self.call.origin)?,
                 "args" => state.serialize_field("args", &self.call.args)?,
-                "parent_id" => state.serialize_field("parent_id", &self.call.parent_id)?,
-                "extrinsic_id" => state.serialize_field("extrinsic_id", &self.call.extrinsic_id)?,
+                "parent_id" => state.serialize_field("parentId", &self.call.parent_id)?,
+                "extrinsic_id" => state.serialize_field("extrinsicId", &self.call.extrinsic_id)?,
                 _ => panic!("unexpected field"),
             };
         }

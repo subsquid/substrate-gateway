@@ -66,6 +66,15 @@ impl EvmLogSelection {
                     }
                 }
             }
+            if let Some(value) = value.get("log") {
+                if let Some(value) = value.get("topics") {
+                    if let Some(value) = value.get(index) {
+                        if let Some(topic) = value.as_str() {
+                            return Some(topic.to_string())
+                        }
+                    }
+                }
+            }
         }
         None
     }

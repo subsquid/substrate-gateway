@@ -39,7 +39,7 @@ pub struct EvmLog {
     pub name: String,
     pub args: Option<serde_json::Value>,
     pub pos: i64,
-    pub evm_tx_hash: Option<String>
+    pub evm_tx_hash: String
 }
 
 #[derive(sqlx::FromRow, Debug)]

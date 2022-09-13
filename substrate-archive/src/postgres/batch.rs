@@ -864,7 +864,10 @@ impl<'a> BatchLoader<'a> {
                 event.name,
                 event.args,
                 event.pos::int8,
-                jsonb_extract_path_text(executed_event.args, '2') AS evm_tx_hash
+                COALESCE(
+                    jsonb_extract_path_text(executed_event.args, '2'),
+                    jsonb_extract_path_text(executed_event.args, 'transactionHash')
+                ) AS evm_tx_hash
             FROM event
             JOIN event executed_event
                 ON event.extrinsic_id = executed_event.extrinsic_id

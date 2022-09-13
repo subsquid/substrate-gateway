@@ -1,6 +1,6 @@
 [package]
 name = "substrate-gateway"
-version = "2.1.4"
+version = "2.1.5"
 description = "Graphql server for substrate-ingest"
 edition = "2021"
 

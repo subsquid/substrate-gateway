@@ -105,8 +105,14 @@ pub struct GearUserMessageSentSelection {
 }
 
 #[derive(Debug)]
-pub struct EvmExecutedSelection {
-    pub contract: String,
+pub struct AcalaEvmLog {
+    pub contract: Option<String>,
     pub filter: Vec<Vec<String>>,
+}
+
+#[derive(Debug)]
+pub struct AcalaEvmEventSelection {
+    pub contract: String,
+    pub logs: Vec<AcalaEvmLog>,
     pub data: EventDataSelection,
 }

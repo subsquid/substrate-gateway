@@ -64,38 +64,26 @@ CREATE TABLE event (
 );
 
 
-CREATE TABLE evm_log (
-    id char(17) primary key,
-    block_id char(16) not null references block on delete cascade,
-    event_id char(23) not null references event on delete cascade,
-    contract varchar not null,
-    topic0 varchar,
-    topic1 varchar,
-    topic2 varchar,
-    topic3 varchar
-);
-
-
 CREATE TABLE gear_message_enqueued (
-    event_id char(23) primary key REFERENCES event,
+    event_id char(23) primary key references event,
     program varchar not null
 );
 
 
 CREATE TABLE gear_user_message_sent (
-   event_id char(23) primary key REFERENCES event,
+   event_id char(23) primary key references event,
    program varchar not null
 );
 
 
 CREATE TABLE contracts_contract_emitted (
-    event_id char(23) primary key REFERENCES event,
+    event_id char(23) primary key references event,
     contract varchar not null
 );
 
 
 CREATE TABLE frontier_evm_log (
-    event_id char(23) primary key REFERENCES event,
+    event_id char(23) primary key references event,
     contract char(42) not null,
     topic0 char(66),
     topic1 char(66),
@@ -103,8 +91,27 @@ CREATE TABLE frontier_evm_log (
     topic3 char(66)
 );
 
+
 CREATE TABLE frontier_ethereum_transaction (
     call_id varchar(30) primary key references call,
     contract char(42) not null,
     sighash varchar(10)
+);
+
+
+CREATE TABLE acala_evm_executed (
+    event_id char(23) primary key references event,
+    contract char(42) not null
+);
+
+
+CREATE TABLE acala_evm_executed_log (
+    id char(23) primary key,
+    event_id char(23) not null references event on delete cascade,
+    event_contract char(42) not null,
+    contract char(42) not null,
+    topic0 char(66),
+    topic1 char(66),
+    topic2 char(66),
+    topic3 char(66)
 );

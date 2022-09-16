@@ -1,37 +1,32 @@
-use std::{env, thread};
-use std::sync::Once;
-use std::time::Duration;
-use sqlx::postgres::PgPoolOptions;
-use actix_web::rt::{Runtime, spawn};
 use actix_web::rt::time::sleep;
-use substrate_gateway::SubstrateGateway;
+use actix_web::rt::{spawn, Runtime};
 use serde::Deserialize;
 use serde_json::Value;
+use sqlx::postgres::PgPoolOptions;
+use std::sync::Once;
+use std::time::Duration;
+use std::{env, thread};
+use substrate_gateway::SubstrateGateway;
 
 static INIT: Once = Once::new();
 
 pub fn launch_gateway() {
     INIT.call_once(|| {
         let handle = thread::spawn(|| {
-            Runtime::new()
-                .unwrap()
-                .block_on(async {
-                    let database_url = env::var("TEST_DATABASE_URL").unwrap();
-                    let pool = PgPoolOptions::new()
-                        .connect(&database_url)
+            Runtime::new().unwrap().block_on(async {
+                let database_url = env::var("TEST_DATABASE_URL").unwrap();
+                let pool = PgPoolOptions::new().connect(&database_url).await.unwrap();
+                spawn(async {
+                    SubstrateGateway::new(pool)
+                        .evm_support(true)
+                        .contracts_support(true)
+                        .gear_support(true)
+                        .acala_support(true)
+                        .run()
                         .await
-                        .unwrap();
-                    spawn(async {
-                        SubstrateGateway::new(pool)
-                            .evm_support(true)
-                            .contracts_support(true)
-                            .gear_support(true)
-                            .evm_plus_support(true)
-                            .run()
-                            .await
-                    });
-                    sleep(Duration::from_secs(1)).await;
                 });
+                sleep(Duration::from_secs(1)).await;
+            });
         });
         handle.join().unwrap();
     })
@@ -82,14 +77,18 @@ pub struct GatewayResponse<T> {
 
 fn args_to_string(args: &Value, root: bool) -> String {
     if args.is_array() {
-        let list = args.as_array().unwrap()
+        let list = args
+            .as_array()
+            .unwrap()
             .iter()
             .map(|value| args_to_string(value, false))
             .collect::<Vec<String>>()
             .join(", ");
         format!("[{}]", list)
     } else if args.is_object() {
-        let object = args.as_object().unwrap()
+        let object = args
+            .as_object()
+            .unwrap()
             .iter()
             .map(|(key, value)| format!("{}: {}", key, args_to_string(value, false)))
             .collect::<Vec<String>>()
@@ -116,29 +115,17 @@ impl Client {
         let json = serde_json::json!({
             "query": format!("{{ batch({}) {{ calls, events, extrinsics }} }}", args_to_string(&args, true)),
         });
-        let response = self.0.post("http://0.0.0.0:8000/graphql")
+        let response = self
+            .0
+            .post("http://0.0.0.0:8000/graphql")
             .json(&json)
             .send()
             .await
             .unwrap();
-        let mut parsed = response.json::<GatewayResponse<BatchResponse>>()
+        let mut parsed = response
+            .json::<GatewayResponse<BatchResponse>>()
             .await
             .unwrap();
         parsed.data.batch.remove(0)
-    }
-
-    pub async fn batch_optional(&self, args: Value) -> Option<Batch> {
-        let json = serde_json::json!({
-            "query": format!("{{ batch({}) {{ calls, events, extrinsics }} }}", args_to_string(&args, true)),
-        });
-        let response = self.0.post("http://0.0.0.0:8000/graphql")
-            .json(&json)
-            .send()
-            .await
-            .unwrap();
-        let parsed = response.json::<GatewayResponse<BatchResponse>>()
-            .await
-            .unwrap();
-        parsed.data.batch.into_iter().next()
     }
 }

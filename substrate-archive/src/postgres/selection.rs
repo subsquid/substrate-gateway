@@ -2,8 +2,8 @@ use serde_json::Value;
 use crate::entities::{Call, Event, EvmLog};
 use crate::selection::{
     CallSelection, EventSelection, ContractsEventSelection, EthTransactSelection,
-    GearMessageEnqueuedSelection, GearUserMessageSentSelection, EvmExecutedSelection,
-    EvmLogSelection,
+    GearMessageEnqueuedSelection, GearUserMessageSentSelection, AcalaEvmEventSelection,
+    EvmLogSelection, AcalaEvmLog
 };
 
 const WILDCARD: &str = "*";
@@ -184,56 +184,89 @@ impl GearUserMessageSentSelection {
     }
 }
 
-impl EvmExecutedSelection {
+impl AcalaEvmEventSelection {
     pub fn r#match(&self, event: &Event) -> bool {
         if let Some(value) = &event.args {
-            if let Some(value) = value.get("logs") {
-                if let Some(logs) = value.as_array() {
-                    for log in logs {
-                        if let Some(value) = log.get("address") {
-                            if let Some(address) = value.as_str() {
-                                if address == self.contract && self.filter_match(log) {
-                                    return true;
-                                }
-                            }
-                        }
-                    }
-                }
+            if self.contract_match(value) {
+                return self.logs_match(value)
             }
         }
         false
     }
 
-    fn filter_match(&self, log: &Value) -> bool {
-        let filter: Vec<_> = self.filter.iter().enumerate().collect();
-        for (index, topics) in filter {
-            if !self.topics_match(topics, log, index) {
-                return false;
+    fn contract_match(&self, args: &Value) -> bool {
+        if self.contract == WILDCARD {
+            return true
+        }
+
+        if let Some(value) = args.get("contract") {
+            if let Some(contract) = value.as_str() {
+                return self.contract == contract
+            }
+        }
+        false
+    }
+
+    fn logs_match(&self, args: &Value) -> bool {
+        if self.logs.is_empty() {
+            return true
+        }
+
+        self.logs.iter().any(|log| self.log_match(log, args))
+    }
+
+    fn is_log_empty(&self, log: &AcalaEvmLog) -> bool {
+        if log.contract.is_some() {
+            return false
+        }
+        for topics in &log.filter {
+            if !topics.is_empty() {
+                return false
             }
         }
         true
     }
 
-    fn topics_match(&self, topics: &Vec<String>, log: &Value, index: usize) -> bool {
-        if topics.is_empty() {
+    fn log_match(&self, log: &AcalaEvmLog, args: &Value) -> bool {
+        if self.is_log_empty(log) {
             return true
         }
 
-        if let Some(log_topic) = self.get_log_topic(log, index) {
-            topics.iter().any(|topic| topic == &log_topic)
-        } else {
-            false
-        }
-    }
+        if let Some(value) = args.get("logs") {
+            if let Some(logs) = value.as_array() {
+                for nested_log in logs {
+                    if let Some(contract) = &log.contract {
+                        let address = nested_log.get("address")
+                            .and_then(|address| address.as_str());
+                        if let Some(address) = address {
+                            if address != contract {
+                                continue
+                            }
+                        } else {
+                            continue
+                        }
+                    }
 
-    fn get_log_topic(&self, log: &Value, index: usize) -> Option<String> {
-        if let Some(value) = log.get("topics") {
-            if let Some(value) = value.get(index) {
-                if let Some(topic) = value.as_str() {
-                    return Some(topic.to_string())
+                    let topics_match = log.filter.iter().enumerate().all(|(index, topics)| {
+                        topics.iter().any(|topic| {
+                            if let Some(value) = nested_log.get("topics") {
+                                if let Some(topics) = value.as_array() {
+                                    if let Some(value) = topics.get(index) {
+                                        if let Some(log_topic) = value.as_str() {
+                                            return log_topic == topic
+                                        }
+                                    }
+                                }
+                            }
+                            false
+                        })
+                    });
+                    if topics_match {
+                        return true
+                    }
                 }
             }
         }
-        None
+        false
     }
 }

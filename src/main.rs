@@ -27,6 +27,10 @@ struct Args {
     /// Gear pallet support
     #[clap(long)]
     gear_support: bool,
+
+    /// Acala's EVM pallet support
+    #[clap(long)]
+    acala_support: bool,
 }
 
 #[tracing::instrument]
@@ -45,6 +49,7 @@ async fn main() -> std::io::Result<()> {
         .evm_support(args.evm_support)
         .contracts_support(args.contracts_support)
         .gear_support(args.gear_support)
+        .acala_support(args.acala_support)
         .run()
         .await
 }

@@ -1,7 +1,8 @@
 use substrate_archive::selection::{
     EventDataSelection, CallDataSelection, EventSelection, CallSelection,
     EvmLogDataSelection, EvmLogSelection, ContractsEventSelection, EthTransactSelection,
-    GearMessageEnqueuedSelection, GearUserMessageSentSelection, EvmExecutedSelection,
+    GearMessageEnqueuedSelection, GearUserMessageSentSelection, AcalaEvmEventSelection,
+    AcalaEvmLog,
 };
 use substrate_archive::fields::{ParentCallFields, CallFields, ExtrinsicFields, EventFields, EvmLogFields};
 use async_graphql::InputObject;
@@ -400,19 +401,39 @@ impl From<GearUserMessageSentSelectionInput> for GearUserMessageSentSelection {
 
 
 #[derive(InputObject, Clone)]
-#[graphql(name = "EvmExecutedSelection")]
-pub struct EvmExecutedSelectionInput {
-    pub contract: String,
+#[graphql(name = "AcalaEvmLog")]
+pub struct AcalaEvmLogInput {
+    pub contract: Option<String>,
     pub filter: Option<Vec<Vec<String>>>,
+}
+
+
+impl From<AcalaEvmLogInput> for AcalaEvmLog {
+    fn from(input: AcalaEvmLogInput) -> Self {
+        AcalaEvmLog {
+            contract: input.contract,
+            filter: input.filter.unwrap_or_default(),
+        }
+    }
+}
+
+
+#[derive(InputObject, Clone)]
+#[graphql(name = "AcalaEvmEventSelection")]
+pub struct AcalaEvmEventSelectionInput {
+    pub contract: String,
+    pub logs: Option<Vec<AcalaEvmLogInput>>,
     pub data: Option<EventDataSelectionInput>,
 }
 
 
-impl From<EvmExecutedSelectionInput> for EvmExecutedSelection {
-    fn from(selection: EvmExecutedSelectionInput) -> Self {
-        EvmExecutedSelection {
+impl From<AcalaEvmEventSelectionInput> for AcalaEvmEventSelection {
+    fn from(selection: AcalaEvmEventSelectionInput) -> Self {
+        AcalaEvmEventSelection {
             contract: selection.contract,
-            filter: selection.filter.unwrap_or_default(),
+            logs: selection.logs.map_or_else(Vec::new, |logs| {
+                logs.into_iter().map(AcalaEvmLog::from).collect()
+            }),
             data: selection.data.map_or_else(|| {
                 EventDataSelection::new(true)
             }, |data| {

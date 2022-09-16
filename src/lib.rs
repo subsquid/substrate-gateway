@@ -1,5 +1,5 @@
 use async_graphql::{EmptyMutation, EmptySubscription, Schema};
-use graphql::{ContractsSupport, EvmPlusSupport, EvmSupport, GearSupport, QueryRoot};
+use graphql::{AcalaSupport, ContractsSupport, EvmSupport, GearSupport, QueryRoot};
 use sqlx::{Pool, Postgres};
 use std::boxed::Box;
 use substrate_archive::postgres::PostgresArchive;
@@ -11,7 +11,7 @@ mod server;
 pub struct SubstrateGateway {
     pool: Pool<Postgres>,
     evm_support: bool,
-    evm_plus_support: bool,
+    acala_support: bool,
     contracts_support: bool,
     gear_support: bool,
 }
@@ -21,7 +21,7 @@ impl SubstrateGateway {
         SubstrateGateway {
             pool,
             evm_support: false,
-            evm_plus_support: false,
+            acala_support: false,
             contracts_support: false,
             gear_support: false,
         }
@@ -32,8 +32,8 @@ impl SubstrateGateway {
         self
     }
 
-    pub fn evm_plus_support(mut self, value: bool) -> Self {
-        self.evm_plus_support = value;
+    pub fn acala_support(mut self, value: bool) -> Self {
+        self.acala_support = value;
         self
     }
 
@@ -52,7 +52,7 @@ impl SubstrateGateway {
         let query = QueryRoot { archive };
         let schema = Schema::build(query, EmptyMutation, EmptySubscription)
             .data(EvmSupport(self.evm_support))
-            .data(EvmPlusSupport(self.evm_plus_support))
+            .data(AcalaSupport(self.acala_support))
             .data(ContractsSupport(self.contracts_support))
             .data(GearSupport(self.gear_support))
             .finish();

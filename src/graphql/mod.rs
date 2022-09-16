@@ -3,7 +3,7 @@ use substrate_archive::selection::{
     EventSelection, CallSelection, EvmLogSelection,
     ContractsEventSelection, EthTransactSelection,
     GearMessageEnqueuedSelection, GearUserMessageSentSelection,
-    EvmExecutedSelection,
+    AcalaEvmEventSelection,
 };
 use substrate_archive::error::Error;
 use substrate_archive::entities::{Batch, Metadata, Status};
@@ -12,7 +12,7 @@ use inputs::{
     EventSelectionInput, CallSelectionInput, EthTransactSelectionInput,
     EvmLogSelectionInput, ContractsEventSelectionInput,
     GearMessageEnqueuedSelectionInput, GearUserMessageSentSelectionInput,
-    EvmExecutedSelectionInput,
+    AcalaEvmEventSelectionInput,
 };
 use objects::{StatusObject, MetadataObject, BatchObject};
 
@@ -25,10 +25,10 @@ fn is_evm_supported(ctx: &Context<'_>) -> bool {
     ctx.data_unchecked::<EvmSupport>().0
 }
 
-pub struct EvmPlusSupport(pub bool);
+pub struct AcalaSupport(pub bool);
 
-fn is_evm_plus_supported(ctx: &Context<'_>) -> bool {
-    ctx.data_unchecked::<EvmPlusSupport>().0
+fn is_acala_supported(ctx: &Context<'_>) -> bool {
+    ctx.data_unchecked::<AcalaSupport>().0
 }
 
 pub struct ContractsSupport(pub bool);
@@ -72,8 +72,10 @@ impl QueryRoot {
         gear_message_enqueued_selections: Option<Vec<GearMessageEnqueuedSelectionInput>>,
         #[graphql(name = "gearUserMessagesSent", visible = "is_gear_supported")]
         gear_user_message_sent_selections: Option<Vec<GearUserMessageSentSelectionInput>>,
-        // #[graphql(name = "evmExecuted", visible = "is_evm_plus_supported")]
-        // evm_executed_selections: Option<Vec<EvmExecutedSelectionInput>>,
+        #[graphql(name = "acalaEvmExecuted", visible = "is_acala_supported")]
+        acala_evm_executed_selections: Option<Vec<AcalaEvmEventSelectionInput>>,
+        #[graphql(name = "acalaEvmExecutedFailed", visible = "is_acala_supported")]
+        acala_evm_executed_failed_selections: Option<Vec<AcalaEvmEventSelectionInput>>,
         #[graphql(name = "events")]
         event_selections: Option<Vec<EventSelectionInput>>,
         #[graphql(name = "calls")]
@@ -92,8 +94,8 @@ impl QueryRoot {
             contracts_event_selections: self.unwrap_selections::<ContractsEventSelectionInput, ContractsEventSelection>(contracts_event_selections),
             gear_message_enqueued_selections: self.unwrap_selections::<GearMessageEnqueuedSelectionInput, GearMessageEnqueuedSelection>(gear_message_enqueued_selections),
             gear_user_message_sent_selections: self.unwrap_selections::<GearUserMessageSentSelectionInput, GearUserMessageSentSelection>(gear_user_message_sent_selections),
-            evm_executed_selections: vec![],
-            // evm_executed_selections: self.unwrap_selections::<EvmExecutedSelectionInput, EvmExecutedSelection>(evm_executed_selections),
+            acala_evm_executed_selections: self.unwrap_selections::<AcalaEvmEventSelectionInput, AcalaEvmEventSelection>(acala_evm_executed_selections),
+            acala_evm_executed_failed_selections: self.unwrap_selections::<AcalaEvmEventSelectionInput, AcalaEvmEventSelection>(acala_evm_executed_failed_selections),
         };
         let batch = self.archive.batch(&options)
             .await?

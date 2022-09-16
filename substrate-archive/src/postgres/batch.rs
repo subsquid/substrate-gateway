@@ -8,7 +8,7 @@ use crate::selection::{
     CallSelection, CallDataSelection, EventSelection,
     EvmLogSelection, ContractsEventSelection, EthTransactSelection,
     GearMessageEnqueuedSelection, GearUserMessageSentSelection,
-    EventDataSelection, EvmExecutedSelection
+    EventDataSelection, AcalaEvmEventSelection, AcalaEvmLog,
 };
 use crate::metrics::ObserverExt;
 use super::BatchOptions;
@@ -28,7 +28,8 @@ pub struct BatchLoader<'a> {
     contracts_event_selections: &'a Vec<ContractsEventSelection>,
     gear_message_enqueued_selections: &'a Vec<GearMessageEnqueuedSelection>,
     gear_user_message_sent_selections: &'a Vec<GearUserMessageSentSelection>,
-    evm_executed_selections: &'a Vec<EvmExecutedSelection>,
+    acala_evm_executed_selections: &'a Vec<AcalaEvmEventSelection>,
+    acala_evm_executed_failed_selections: &'a Vec<AcalaEvmEventSelection>,
 }
 
 const EVENTS_BY_ID_QUERY: &str = "SELECT
@@ -53,8 +54,16 @@ impl<'a> BatchLoader<'a> {
         let mut contracts_events = self.load_contracts_events().await?;
         let mut messages_enqueued = self.load_messages_enqueued().await?;
         let mut messages_sent = self.load_messages_sent().await?;
-        let mut evm_executed = self.load_evm_executed().await?;
-
+        let mut acala_evm_executed = self.load_acala_evm_event(
+            self.acala_evm_executed_selections,
+            "acala_evm_executed",
+            "acala_evm_executed_log"
+        ).await?;
+        let mut acala_evm_failed = self.load_acala_evm_event(
+            self.acala_evm_executed_failed_selections,
+            "acala_evm_executed_failed",
+            "acala_evm_executed_failed_log"
+        ).await?;
         let blocks = if self.include_all_blocks {
             self.load_blocks().await?
         } else {
@@ -66,7 +75,8 @@ impl<'a> BatchLoader<'a> {
             contracts_events.iter().for_each(|event| block_ids.push(event.block_id.clone()));
             messages_enqueued.iter().for_each(|event| block_ids.push(event.block_id.clone()));
             messages_sent.iter().for_each(|event| block_ids.push(event.block_id.clone()));
-            evm_executed.iter().for_each(|event| block_ids.push(event.block_id.clone()));
+            acala_evm_executed.iter().for_each(|event| block_ids.push(event.block_id.clone()));
+            acala_evm_failed.iter().for_each(|event| block_ids.push(event.block_id.clone()));
             block_ids.sort();
             block_ids.dedup();
             block_ids.truncate(self.limit as usize);
@@ -78,7 +88,8 @@ impl<'a> BatchLoader<'a> {
             contracts_events.retain(|event| block_ids.contains(&event.block_id));
             messages_enqueued.retain(|event| block_ids.contains(&event.block_id));
             messages_sent.retain(|event| block_ids.contains(&event.block_id));
-            evm_executed.retain(|event| block_ids.contains(&event.block_id));
+            acala_evm_executed.retain(|event| block_ids.contains(&event.block_id));
+            acala_evm_failed.retain(|event| block_ids.contains(&event.block_id));
             self.load_blocks_by_ids(&block_ids).await?
         };
 
@@ -197,14 +208,22 @@ impl<'a> BatchLoader<'a> {
             }
         }
         events.append(&mut messages_sent);
-        for event in &evm_executed {
-            for selection in self.evm_executed_selections {
+        for event in &acala_evm_executed {
+            for selection in self.acala_evm_executed_selections {
                 if selection.r#match(event) {
                     process_event(event, &selection.data);
                 }
             }
         }
-        events.append(&mut evm_executed);
+        events.append(&mut acala_evm_executed);
+        for event in &acala_evm_failed {
+            for selection in self.acala_evm_executed_failed_selections {
+                if selection.r#match(event) {
+                    process_event(event, &selection.data);
+                }
+            }
+        }
+        events.append(&mut acala_evm_failed);
         for event in &contracts_events {
             for selection in self.contracts_event_selections {
                 if selection.r#match(event) {
@@ -681,75 +700,149 @@ impl<'a> BatchLoader<'a> {
         Ok(events)
     }
 
-    async fn load_evm_executed(&self) -> Result<Vec<Event>, Error> {
-        if self.evm_executed_selections.is_empty() {
-            return Ok(Vec::new())
+    fn is_acala_evm_logs_empty(&self, logs: &Vec<AcalaEvmLog>) -> bool {
+        for log in logs {
+            if log.contract.is_some() {
+                return false
+            }
+            for topics in &log.filter {
+                if !topics.is_empty() {
+                    return false
+                }
+            }
         }
-        let mut ids = Vec::new();
-        for selection in self.evm_executed_selections {
-            let mut log_ids: Vec<String> = Vec::new();
-            let mut blocks = HashSet::new();
-            let limit: i64 = 2000;
+        true
+    }
 
-            let mut id_gt = format!("{:010}", self.from_block);
+    async fn query_acala_evm_event(
+        &self,
+        selection: &AcalaEvmEventSelection,
+        event_table: &'static str
+    ) -> Result<Vec<String>, Error> {
+        let id_gt = format!("{:010}", self.from_block);
+        let id_lt = self.to_block.map(|to_block| format!("{:010}", to_block + 1));
+
+        let build_args = |last_id: Option<String>, _len: usize, limit: i64| {
+            let mut args = PgArguments::default();
+            let mut sql = format!("SELECT event_id
+                FROM {}
+                WHERE event_id > $1", event_table);
+            let mut args_len = 1;
+            if let Some(last_id) = &last_id {
+                args.add(last_id);
+            } else {
+                args.add(&id_gt);
+            }
+            if let Some(id_lt) = &id_lt {
+                args_len += 1;
+                args.add(id_lt);
+                sql.push_str(&format!(" AND event_id < ${}", args_len));
+            }
+            if selection.contract != "*" {
+                args_len += 1;
+                args.add(&selection.contract);
+                sql.push_str(&format!(" AND contract = ${}", args_len));
+            }
+            sql.push_str(" ORDER BY event_id");
+            args_len += 1;
+            args.add(limit);
+            sql.push_str(&format!(" LIMIT ${}", args_len));
+
+            (sql, args)
+        };
+        let chunk_limit = 2000;
+        self.load_ids(build_args, event_table, chunk_limit).await
+    }
+
+    async fn query_acala_evm_event_log(
+        &self,
+        selection: &AcalaEvmEventSelection,
+        log_table: &'static str,
+    ) -> Result<Vec<String>, Error> {
+        let mut ids: Vec<String> = Vec::new();
+
+        for log in &selection.logs {
+            let id_gt = format!("{:010}", self.from_block);
             let id_lt = self.to_block.map(|to_block| format!("{:010}", to_block + 1));
 
-            'outer: loop {
-                let mut query = String::from("SELECT id
-                    FROM evm_log
-                    WHERE contract = $1 AND id > $2");
+            let build_args = |last_id: Option<String>, _len: usize, limit: i64| {
                 let mut args = PgArguments::default();
-                args.add(&selection.contract);
-                args.add(&id_gt);
-                let mut args_len = 2;
+                let mut sql = format!("SELECT id
+                    FROM {}
+                    WHERE id > $1", log_table);
+                let mut args_len = 1;
+                if let Some(last_id) = &last_id {
+                    args.add(last_id);
+                } else {
+                    args.add(&id_gt);
+                }
                 if let Some(id_lt) = &id_lt {
                     args_len += 1;
                     args.add(id_lt);
-                    query.push_str(&format!(" AND id < ${}", args_len));
+                    sql.push_str(&format!(" AND id < ${}", args_len));
                 }
-                for index in 0..=3 {
-                    if let Some(topics) = selection.filter.get(index) {
+                if selection.contract != "*" {
+                    args_len += 1;
+                    args.add(&selection.contract);
+                    sql.push_str(&format!(" AND event_contract = ${}", args_len));
+                }
+                if let Some(contract) = &log.contract {
+                    args_len += 1;
+                    args.add(contract);
+                    sql.push_str(&format!(" AND contract = ${}", args_len));
+                }
+                for idx in 0..=3 {
+                    if let Some(topics) = log.filter.get(idx) {
                         if !topics.is_empty() {
                             args_len += 1;
                             args.add(topics);
-                            query.push_str(&format!(" AND topic{} = ANY(${})", index, args_len));
+                            sql.push_str(&format!(" AND topic{} = ANY(${})", idx, args_len));
                         }
                     }
                 }
+                sql.push_str(" ORDER BY id");
                 args_len += 1;
                 args.add(limit);
-                query.push_str(&format!(" LIMIT ${}", args_len));
+                sql.push_str(&format!(" LIMIT ${}", args_len));
 
-                let result = sqlx::query_scalar_with::<_, String, _>(&query, args)
-                    .fetch_all(&self.pool)
-                    .observe_duration("evm_log")
-                    .await?;
-                if result.is_empty() {
-                    break
-                } else {
-                    for id in result {
-                        let block_id = id.split('-').next().unwrap().to_string();
-                        if blocks.len() == self.limit as usize && !blocks.contains(&block_id) {
-                            break 'outer;
-                        }
-                        blocks.insert(block_id);
-                        log_ids.push(id);
-                    }
+                (sql, args)
+            };
+            let chunk_limit = 2000;
+            let mut log_ids = self.load_ids(build_args, log_table, chunk_limit).await?;
+            ids.append(&mut log_ids);
+        }
+        self.trim_ids(&mut ids);
 
-                    id_gt = log_ids.last().unwrap().clone();
-                }
-            }
+        let query = "SELECT event_id
+            FROM acala_evm_executed_log
+            WHERE id = ANY($1::char(23)[])";
+        let selection_ids = sqlx::query_scalar::<_, String>(query)
+            .bind(&ids)
+            .fetch_all(&self.pool)
+            .observe_duration("acala_evm_executed_log")
+            .await?;
+        Ok(selection_ids)
+    }
 
-            let query = "SELECT event_id
-                FROM evm_log
-                WHERE id = ANY($1)";
-            let mut selection_ids = sqlx::query_scalar::<_, String>(query)
-                .bind(&log_ids)
-                .fetch_all(&self.pool)
-                .await?;
+    async fn load_acala_evm_event(
+        &self,
+        selections: &Vec<AcalaEvmEventSelection>,
+        event_table: &'static str,
+        log_table: &'static str,
+    ) -> Result<Vec<Event>, Error> {
+        if selections.is_empty() {
+            return Ok(Vec::new())
+        }
+        let mut ids = Vec::new();
+        for selection in selections {
+            let mut selection_ids = if self.is_acala_evm_logs_empty(&selection.logs) {
+                self.query_acala_evm_event(selection, event_table).await?
+            } else {
+                self.query_acala_evm_event_log(selection, log_table).await?
+            };
             ids.append(&mut selection_ids);
         }
-        ids.dedup();
+        self.trim_ids(&mut ids);
         let events = sqlx::query_as::<_, Event>(EVENTS_BY_ID_QUERY)
             .bind(&ids)
             .fetch_all(&self.pool)
@@ -1137,7 +1230,8 @@ impl BatchOptions {
             contracts_event_selections: &self.contracts_event_selections,
             gear_message_enqueued_selections: &self.gear_message_enqueued_selections,
             gear_user_message_sent_selections: &self.gear_user_message_sent_selections,
-            evm_executed_selections: &self.evm_executed_selections,
+            acala_evm_executed_selections: &self.acala_evm_executed_selections,
+            acala_evm_executed_failed_selections: &self.acala_evm_executed_failed_selections,
         }
     }
 }

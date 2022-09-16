@@ -4,11 +4,11 @@ use crate::error::Error;
 use crate::metrics::ObserverExt;
 use sqlx::{Pool, Postgres};
 
-mod utils;
-mod selection;
-mod fields;
-mod serializer;
 mod batch;
+mod fields;
+mod selection;
+mod serializer;
+mod utils;
 
 pub struct PostgresArchive {
     pool: Pool<Postgres>,
@@ -58,7 +58,6 @@ impl ArchiveService for PostgresArchive {
         Ok(status)
     }
 }
-
 
 impl PostgresArchive {
     pub fn new(pool: Pool<Postgres>) -> PostgresArchive {

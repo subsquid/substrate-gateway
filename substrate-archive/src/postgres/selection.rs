@@ -1,10 +1,10 @@
-use serde_json::Value;
 use crate::entities::{Call, Event, EvmLog};
 use crate::selection::{
-    CallSelection, EventSelection, ContractsEventSelection, EthTransactSelection,
-    GearMessageEnqueuedSelection, GearUserMessageSentSelection, AcalaEvmEventSelection,
-    EvmLogSelection, AcalaEvmLog
+    AcalaEvmEventSelection, AcalaEvmLog, CallSelection, ContractsEventSelection,
+    EthTransactSelection, EventSelection, EvmLogSelection, GearMessageEnqueuedSelection,
+    GearUserMessageSentSelection,
 };
+use serde_json::Value;
 
 const WILDCARD: &str = "*";
 
@@ -24,7 +24,7 @@ impl EvmLogSelection {
     pub fn r#match(&self, log: &EvmLog) -> bool {
         if let Some(args) = &log.args {
             if let Some(address) = self.get_address(args) {
-                return self.contract_match(address) && self.filter_match(log)
+                return self.contract_match(address) && self.filter_match(log);
             }
         }
 
@@ -47,7 +47,7 @@ impl EvmLogSelection {
 
     fn topics_match(&self, topics: &Vec<String>, log: &EvmLog, index: usize) -> bool {
         if topics.is_empty() {
-            return true
+            return true;
         }
 
         if let Some(log_topic) = self.get_log_topic(log, index) {
@@ -62,7 +62,7 @@ impl EvmLogSelection {
             if let Some(value) = value.get("topics") {
                 if let Some(value) = value.get(index) {
                     if let Some(topic) = value.as_str() {
-                        return Some(topic.to_string())
+                        return Some(topic.to_string());
                     }
                 }
             }
@@ -70,7 +70,7 @@ impl EvmLogSelection {
                 if let Some(value) = value.get("topics") {
                     if let Some(value) = value.get(index) {
                         if let Some(topic) = value.as_str() {
-                            return Some(topic.to_string())
+                            return Some(topic.to_string());
                         }
                     }
                 }
@@ -82,13 +82,13 @@ impl EvmLogSelection {
     fn get_address<'a>(&'a self, args: &'a Value) -> Option<&str> {
         if let Some(value) = args.get("address") {
             if let Some(address) = value.as_str() {
-                return Some(address)
+                return Some(address);
             }
         }
         if let Some(log) = args.get("log") {
             if let Some(value) = log.get("address") {
                 if let Some(address) = value.as_str() {
-                    return Some(address)
+                    return Some(address);
                 }
             }
         }
@@ -101,7 +101,7 @@ impl EthTransactSelection {
         if let Some(args) = &call.args {
             if let Some(transaction) = args.get("transaction") {
                 if let Some(address) = self.get_transaction_address(transaction) {
-                    return self.contract_match(address) && self.sighash_match(transaction)
+                    return self.contract_match(address) && self.sighash_match(transaction);
                 }
             }
         }
@@ -112,12 +112,13 @@ impl EthTransactSelection {
         if let Some(sighash) = &self.sighash {
             if let Some(value) = args.get("input") {
                 if let Some(input) = value.as_str() {
-                    return sighash == &input[..10].to_string()
-                } {
-                    return false
+                    return sighash == &input[..10].to_string();
+                }
+                {
+                    return false;
                 }
             }
-            return false
+            return false;
         }
         true
     }
@@ -127,11 +128,11 @@ impl EthTransactSelection {
     }
 
     fn get_transaction_address<'a>(&'a self, transaction: &'a Value) -> Option<&str> {
-        let action = transaction.get("action")
-            .or_else(|| {
-                transaction.get("value")
-                    .and_then(|value| value.get("action"))
-            });
+        let action = transaction.get("action").or_else(|| {
+            transaction
+                .get("value")
+                .and_then(|value| value.get("action"))
+        });
         if let Some(action) = action {
             if let Some(value) = action.get("value") {
                 if let Some(value) = value.as_str() {
@@ -148,7 +149,7 @@ impl ContractsEventSelection {
         if let Some(value) = &event.args {
             if let Some(value) = value.get("contract") {
                 if let Some(contract) = value.as_str() {
-                    return contract == self.contract
+                    return contract == self.contract;
                 }
             }
         }
@@ -161,7 +162,7 @@ impl GearMessageEnqueuedSelection {
         if let Some(value) = &event.args {
             if let Some(value) = value.get("destination") {
                 if let Some(destination) = value.as_str() {
-                    return destination == self.program
+                    return destination == self.program;
                 }
             }
         }
@@ -175,7 +176,7 @@ impl GearUserMessageSentSelection {
             if let Some(value) = value.get("message") {
                 if let Some(value) = value.get("source") {
                     if let Some(source) = value.as_str() {
-                        return source == self.program
+                        return source == self.program;
                     }
                 }
             }
@@ -188,7 +189,7 @@ impl AcalaEvmEventSelection {
     pub fn r#match(&self, event: &Event) -> bool {
         if let Some(value) = &event.args {
             if self.contract_match(value) {
-                return self.logs_match(value)
+                return self.logs_match(value);
             }
         }
         false
@@ -196,12 +197,12 @@ impl AcalaEvmEventSelection {
 
     fn contract_match(&self, args: &Value) -> bool {
         if self.contract == WILDCARD {
-            return true
+            return true;
         }
 
         if let Some(value) = args.get("contract") {
             if let Some(contract) = value.as_str() {
-                return self.contract == contract
+                return self.contract == contract;
             }
         }
         false
@@ -209,7 +210,7 @@ impl AcalaEvmEventSelection {
 
     fn logs_match(&self, args: &Value) -> bool {
         if self.logs.is_empty() {
-            return true
+            return true;
         }
 
         self.logs.iter().any(|log| self.log_match(log, args))
@@ -217,11 +218,11 @@ impl AcalaEvmEventSelection {
 
     fn is_log_empty(&self, log: &AcalaEvmLog) -> bool {
         if log.contract.is_some() {
-            return false
+            return false;
         }
         for topics in &log.filter {
             if !topics.is_empty() {
-                return false
+                return false;
             }
         }
         true
@@ -229,21 +230,22 @@ impl AcalaEvmEventSelection {
 
     fn log_match(&self, log: &AcalaEvmLog, args: &Value) -> bool {
         if self.is_log_empty(log) {
-            return true
+            return true;
         }
 
         if let Some(value) = args.get("logs") {
             if let Some(logs) = value.as_array() {
                 for nested_log in logs {
                     if let Some(contract) = &log.contract {
-                        let address = nested_log.get("address")
+                        let address = nested_log
+                            .get("address")
                             .and_then(|address| address.as_str());
                         if let Some(address) = address {
                             if address != contract {
-                                continue
+                                continue;
                             }
                         } else {
-                            continue
+                            continue;
                         }
                     }
 
@@ -253,7 +255,7 @@ impl AcalaEvmEventSelection {
                                 if let Some(topics) = value.as_array() {
                                     if let Some(value) = topics.get(index) {
                                         if let Some(log_topic) = value.as_str() {
-                                            return log_topic == topic
+                                            return log_topic == topic;
                                         }
                                     }
                                 }
@@ -262,7 +264,7 @@ impl AcalaEvmEventSelection {
                         })
                     });
                     if topics_match {
-                        return true
+                        return true;
                     }
                 }
             }

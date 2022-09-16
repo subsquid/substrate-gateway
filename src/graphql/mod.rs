@@ -1,20 +1,17 @@
-use substrate_archive::{ArchiveService, BatchOptions};
-use substrate_archive::selection::{
-    EventSelection, CallSelection, EvmLogSelection,
-    ContractsEventSelection, EthTransactSelection,
-    GearMessageEnqueuedSelection, GearUserMessageSentSelection,
-    AcalaEvmEventSelection,
-};
-use substrate_archive::error::Error;
-use substrate_archive::entities::{Batch, Metadata, Status};
 use async_graphql::{Context, Object, Result};
 use inputs::{
-    EventSelectionInput, CallSelectionInput, EthTransactSelectionInput,
-    EvmLogSelectionInput, ContractsEventSelectionInput,
+    AcalaEvmEventSelectionInput, CallSelectionInput, ContractsEventSelectionInput,
+    EthTransactSelectionInput, EventSelectionInput, EvmLogSelectionInput,
     GearMessageEnqueuedSelectionInput, GearUserMessageSentSelectionInput,
-    AcalaEvmEventSelectionInput,
 };
-use objects::{StatusObject, MetadataObject, BatchObject};
+use objects::{BatchObject, MetadataObject, StatusObject};
+use substrate_archive::entities::{Batch, Metadata, Status};
+use substrate_archive::error::Error;
+use substrate_archive::selection::{
+    AcalaEvmEventSelection, CallSelection, ContractsEventSelection, EthTransactSelection,
+    EventSelection, EvmLogSelection, GearMessageEnqueuedSelection, GearUserMessageSentSelection,
+};
+use substrate_archive::{ArchiveService, BatchOptions};
 
 mod inputs;
 mod objects;
@@ -44,13 +41,16 @@ fn is_gear_supported(ctx: &Context<'_>) -> bool {
 }
 
 pub struct QueryRoot {
-    pub archive: Box<dyn ArchiveService<
-        Batch = Batch,
-        BatchOptions = BatchOptions,
-        Metadata = Metadata,
-        Status = Status,
-        Error = Error,
-    > + Send + Sync>,
+    pub archive: Box<
+        dyn ArchiveService<
+                Batch = Batch,
+                BatchOptions = BatchOptions,
+                Metadata = Metadata,
+                Status = Status,
+                Error = Error,
+            > + Send
+            + Sync,
+    >,
 }
 
 #[Object]
@@ -59,11 +59,11 @@ impl QueryRoot {
     async fn batch(
         &self,
         limit: i32,
-        #[graphql(default = 0)]
-        from_block: i32,
+        #[graphql(default = 0)] from_block: i32,
         to_block: Option<i32>,
-        #[graphql(name = "evmLogs", visible = "is_evm_supported")]
-        evm_log_selections: Option<Vec<EvmLogSelectionInput>>,
+        #[graphql(name = "evmLogs", visible = "is_evm_supported")] evm_log_selections: Option<
+            Vec<EvmLogSelectionInput>,
+        >,
         #[graphql(name = "ethereumTransactions", visible = "is_evm_supported")]
         eth_transact_selections: Option<Vec<EthTransactSelectionInput>>,
         #[graphql(name = "contractsEvents", visible = "is_contracts_supported")]
@@ -76,10 +76,8 @@ impl QueryRoot {
         acala_evm_executed_selections: Option<Vec<AcalaEvmEventSelectionInput>>,
         #[graphql(name = "acalaEvmExecutedFailed", visible = "is_acala_supported")]
         acala_evm_executed_failed_selections: Option<Vec<AcalaEvmEventSelectionInput>>,
-        #[graphql(name = "events")]
-        event_selections: Option<Vec<EventSelectionInput>>,
-        #[graphql(name = "calls")]
-        call_selections: Option<Vec<CallSelectionInput>>,
+        #[graphql(name = "events")] event_selections: Option<Vec<EventSelectionInput>>,
+        #[graphql(name = "calls")] call_selections: Option<Vec<CallSelectionInput>>,
         include_all_blocks: Option<bool>,
     ) -> Result<Vec<BatchObject>> {
         let options = BatchOptions {
@@ -97,7 +95,9 @@ impl QueryRoot {
             acala_evm_executed_selections: self.unwrap_selections::<AcalaEvmEventSelectionInput, AcalaEvmEventSelection>(acala_evm_executed_selections),
             acala_evm_executed_failed_selections: self.unwrap_selections::<AcalaEvmEventSelectionInput, AcalaEvmEventSelection>(acala_evm_executed_failed_selections),
         };
-        let batch = self.archive.batch(&options)
+        let batch = self
+            .archive
+            .batch(&options)
             .await?
             .into_iter()
             .map(|batch| batch.into())
@@ -106,7 +106,10 @@ impl QueryRoot {
     }
 
     async fn metadata(&self) -> Result<Vec<MetadataObject>> {
-        let metadata = self.archive.metadata().await?
+        let metadata = self
+            .archive
+            .metadata()
+            .await?
             .into_iter()
             .map(|metadata| metadata.into())
             .collect();
@@ -114,7 +117,8 @@ impl QueryRoot {
     }
 
     async fn metadata_by_id(&self, id: String) -> Result<Option<MetadataObject>> {
-        let metadata = self.archive
+        let metadata = self
+            .archive
             .metadata_by_id(id)
             .await?
             .map(|metadata| metadata.into());
@@ -130,7 +134,8 @@ impl QueryRoot {
 impl QueryRoot {
     fn unwrap_selections<T, U: From<T>>(&self, selections: Option<Vec<T>>) -> Vec<U> {
         selections.map_or_else(Vec::new, |selections| {
-            selections.into_iter()
+            selections
+                .into_iter()
                 .map(|selection| U::from(selection))
                 .collect()
         })

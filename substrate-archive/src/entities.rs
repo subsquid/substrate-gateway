@@ -1,6 +1,6 @@
 use chrono::{DateTime, Utc};
-use sqlx::FromRow;
 use rust_decimal::Decimal;
+use sqlx::FromRow;
 
 #[derive(FromRow, Debug)]
 pub struct BlockHeader {
@@ -39,7 +39,7 @@ pub struct EvmLog {
     pub name: String,
     pub args: Option<serde_json::Value>,
     pub pos: i64,
-    pub evm_tx_hash: String
+    pub evm_tx_hash: String,
 }
 
 #[derive(sqlx::FromRow, Debug)]
@@ -69,7 +69,7 @@ pub struct Extrinsic {
     pub success: bool,
     pub error: Option<serde_json::Value>,
     pub pos: i64,
-    pub hash: String
+    pub hash: String,
 }
 
 #[derive(Debug)]

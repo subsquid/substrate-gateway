@@ -1,23 +1,23 @@
-use substrate_archive::selection::{
-    EventDataSelection, CallDataSelection, EventSelection, CallSelection,
-    EvmLogDataSelection, EvmLogSelection, ContractsEventSelection, EthTransactSelection,
-    GearMessageEnqueuedSelection, GearUserMessageSentSelection, AcalaEvmEventSelection,
-    AcalaEvmLog,
-};
-use substrate_archive::fields::{ParentCallFields, CallFields, ExtrinsicFields, EventFields, EvmLogFields};
 use async_graphql::InputObject;
+use substrate_archive::fields::{
+    CallFields, EventFields, EvmLogFields, ExtrinsicFields, ParentCallFields,
+};
+use substrate_archive::selection::{
+    AcalaEvmEventSelection, AcalaEvmLog, CallDataSelection, CallSelection, ContractsEventSelection,
+    EthTransactSelection, EventDataSelection, EventSelection, EvmLogDataSelection, EvmLogSelection,
+    GearMessageEnqueuedSelection, GearUserMessageSentSelection,
+};
 
 #[derive(InputObject, Clone, Debug)]
 #[graphql(name = "ParentCallFields")]
 pub struct ParentCallFieldsInput {
-    #[graphql(name="_all")]
+    #[graphql(name = "_all")]
     pub _all: Option<bool>,
     pub args: Option<bool>,
     pub error: Option<bool>,
     pub origin: Option<bool>,
     pub parent: Option<bool>,
 }
-
 
 impl From<ParentCallFieldsInput> for ParentCallFields {
     fn from(fields: ParentCallFieldsInput) -> Self {
@@ -32,18 +32,16 @@ impl From<ParentCallFieldsInput> for ParentCallFields {
     }
 }
 
-
 #[derive(InputObject, Clone, Debug)]
 #[graphql(name = "CallFields")]
 pub struct CallFieldsInput {
-    #[graphql(name="_all")]
+    #[graphql(name = "_all")]
     pub _all: Option<bool>,
     pub error: Option<bool>,
     pub origin: Option<bool>,
     pub args: Option<bool>,
     pub parent: Option<ParentCallFieldsInput>,
 }
-
 
 impl From<CallFieldsInput> for CallFields {
     fn from(fields: CallFieldsInput) -> Self {
@@ -53,20 +51,18 @@ impl From<CallFieldsInput> for CallFields {
             error: _all || fields.error.unwrap_or(false),
             origin: _all || fields.origin.unwrap_or(false),
             args: _all || fields.args.unwrap_or(false),
-            parent: fields.parent.map_or_else(|| {
-                ParentCallFields::new(_all)
-            }, |parent| {
-                ParentCallFields::from(parent)
-            })
+            parent: fields.parent.map_or_else(
+                || ParentCallFields::new(_all),
+                |parent| ParentCallFields::from(parent),
+            ),
         }
     }
 }
 
-
 #[derive(InputObject, Clone, Debug)]
 #[graphql(name = "ExtrinsicFields")]
 pub struct ExtrinsicFieldsInput {
-    #[graphql(name="_all")]
+    #[graphql(name = "_all")]
     pub _all: Option<bool>,
     pub index_in_block: Option<bool>,
     pub version: Option<bool>,
@@ -79,7 +75,6 @@ pub struct ExtrinsicFieldsInput {
     pub tip: Option<bool>,
 }
 
-
 impl From<ExtrinsicFieldsInput> for ExtrinsicFields {
     fn from(fields: ExtrinsicFieldsInput) -> Self {
         let _all = fields._all.unwrap_or(false);
@@ -91,22 +86,19 @@ impl From<ExtrinsicFieldsInput> for ExtrinsicFields {
             success: _all || fields.success.unwrap_or(false),
             error: _all || fields.error.unwrap_or(false),
             hash: _all || fields.hash.unwrap_or(false),
-            call: fields.call.map_or_else(|| {
-                CallFields::new(_all)
-            }, |call| {
-                CallFields::from(call)
-            }),
+            call: fields
+                .call
+                .map_or_else(|| CallFields::new(_all), |call| CallFields::from(call)),
             fee: _all || fields.fee.unwrap_or(false),
             tip: _all || fields.tip.unwrap_or(false),
         }
     }
 }
 
-
 #[derive(InputObject, Clone, Debug)]
 #[graphql(name = "EventFields")]
 pub struct EventFieldsInput {
-    #[graphql(name="_all")]
+    #[graphql(name = "_all")]
     pub _all: Option<bool>,
     pub index_in_block: Option<bool>,
     pub phase: Option<bool>,
@@ -115,7 +107,6 @@ pub struct EventFieldsInput {
     pub args: Option<bool>,
 }
 
-
 impl From<EventFieldsInput> for EventFields {
     fn from(fields: EventFieldsInput) -> Self {
         let _all = fields._all.unwrap_or(false);
@@ -123,26 +114,22 @@ impl From<EventFieldsInput> for EventFields {
             _all,
             index_in_block: _all || fields.index_in_block.unwrap_or(false),
             phase: _all || fields.phase.unwrap_or(false),
-            extrinsic: fields.extrinsic.map_or_else(|| {
-                ExtrinsicFields::new(_all)
-            }, |extrinsic| {
-                ExtrinsicFields::from(extrinsic)
-            }),
-            call: fields.call.map_or_else(|| {
-                CallFields::new(_all)
-            }, |call| {
-                CallFields::from(call)
-            }),
+            extrinsic: fields.extrinsic.map_or_else(
+                || ExtrinsicFields::new(_all),
+                |extrinsic| ExtrinsicFields::from(extrinsic),
+            ),
+            call: fields
+                .call
+                .map_or_else(|| CallFields::new(_all), |call| CallFields::from(call)),
             args: _all || fields.args.unwrap_or(false),
         }
     }
 }
 
-
 #[derive(InputObject, Clone, Debug)]
 #[graphql(name = "EvmLogFields")]
 pub struct EvmLogFieldsInput {
-    #[graphql(name="_all")]
+    #[graphql(name = "_all")]
     pub _all: Option<bool>,
     pub index_in_block: Option<bool>,
     pub phase: Option<bool>,
@@ -152,7 +139,6 @@ pub struct EvmLogFieldsInput {
     pub evm_tx_hash: Option<bool>,
 }
 
-
 impl From<EvmLogFieldsInput> for EvmLogFields {
     fn from(fields: EvmLogFieldsInput) -> Self {
         let _all = fields._all.unwrap_or(false);
@@ -160,22 +146,18 @@ impl From<EvmLogFieldsInput> for EvmLogFields {
             _all,
             index_in_block: _all || fields.index_in_block.unwrap_or(false),
             phase: _all || fields.phase.unwrap_or(false),
-            extrinsic: fields.extrinsic.map_or_else(|| {
-                ExtrinsicFields::new(_all)
-            }, |extrinsic| {
-                ExtrinsicFields::from(extrinsic)
-            }),
-            call: fields.call.map_or_else(|| {
-                CallFields::new(_all)
-            }, |call| {
-                CallFields::from(call)
-            }),
+            extrinsic: fields.extrinsic.map_or_else(
+                || ExtrinsicFields::new(_all),
+                |extrinsic| ExtrinsicFields::from(extrinsic),
+            ),
+            call: fields
+                .call
+                .map_or_else(|| CallFields::new(_all), |call| CallFields::from(call)),
             args: _all || fields.args.unwrap_or(false),
             evm_tx_hash: _all || fields.evm_tx_hash.unwrap_or(false),
         }
     }
 }
-
 
 #[derive(InputObject, Clone)]
 #[graphql(name = "EventDataSelection")]
@@ -183,19 +165,15 @@ pub struct EventDataSelectionInput {
     pub event: Option<EventFieldsInput>,
 }
 
-
 impl From<EventDataSelectionInput> for EventDataSelection {
     fn from(data: EventDataSelectionInput) -> Self {
         EventDataSelection {
-            event: data.event.map_or_else(|| {
-                EventFields::new(true)
-            }, |event| {
-                EventFields::from(event)
-            })
+            event: data
+                .event
+                .map_or_else(|| EventFields::new(true), |event| EventFields::from(event)),
         }
     }
 }
-
 
 #[derive(InputObject, Clone)]
 #[graphql(name = "CallDataSelection")]
@@ -204,24 +182,19 @@ pub struct CallDataSelectionInput {
     pub extrinsic: Option<ExtrinsicFieldsInput>,
 }
 
-
 impl From<CallDataSelectionInput> for CallDataSelection {
     fn from(data: CallDataSelectionInput) -> Self {
         CallDataSelection {
-            call: data.call.map_or_else(|| {
-                CallFields::new(true)
-            }, |call| {
-                CallFields::from(call)
-            }),
-            extrinsic: data.extrinsic.map_or_else(|| {
-                ExtrinsicFields::new(true)
-            }, |extrinsic| {
-                ExtrinsicFields::from(extrinsic)
-            }),
+            call: data
+                .call
+                .map_or_else(|| CallFields::new(true), |call| CallFields::from(call)),
+            extrinsic: data.extrinsic.map_or_else(
+                || ExtrinsicFields::new(true),
+                |extrinsic| ExtrinsicFields::from(extrinsic),
+            ),
         }
     }
 }
-
 
 #[derive(InputObject, Clone)]
 #[graphql(name = "EventSelection")]
@@ -230,20 +203,17 @@ pub struct EventSelectionInput {
     pub data: Option<EventDataSelectionInput>,
 }
 
-
 impl From<EventSelectionInput> for EventSelection {
     fn from(selection: EventSelectionInput) -> Self {
         EventSelection {
             name: selection.name,
-            data: selection.data.map_or_else(|| {
-                EventDataSelection::new(true)
-            }, |data| {
-                EventDataSelection::from(data)
-            }),
+            data: selection.data.map_or_else(
+                || EventDataSelection::new(true),
+                |data| EventDataSelection::from(data),
+            ),
         }
     }
 }
-
 
 #[derive(InputObject, Clone)]
 pub struct CallSelectionInput {
@@ -251,20 +221,17 @@ pub struct CallSelectionInput {
     pub data: Option<CallDataSelectionInput>,
 }
 
-
 impl From<CallSelectionInput> for CallSelection {
     fn from(selection: CallSelectionInput) -> Self {
         CallSelection {
             name: selection.name,
-            data: selection.data.map_or_else(|| {
-                CallDataSelection::new(true)
-            }, |data| {
-                CallDataSelection::from(data)
-            }),
+            data: selection.data.map_or_else(
+                || CallDataSelection::new(true),
+                |data| CallDataSelection::from(data),
+            ),
         }
     }
 }
-
 
 #[derive(InputObject, Clone)]
 #[graphql(name = "EvmLogDataSelection")]
@@ -272,19 +239,16 @@ pub struct EvmLogDataSelectionInput {
     pub event: Option<EvmLogFieldsInput>,
 }
 
-
 impl From<EvmLogDataSelectionInput> for EvmLogDataSelection {
     fn from(data: EvmLogDataSelectionInput) -> Self {
         EvmLogDataSelection {
-            event: data.event.map_or_else(|| {
-                EvmLogFields::new(true)
-            }, |event| {
-                EvmLogFields::from(event)
-            }),
+            event: data.event.map_or_else(
+                || EvmLogFields::new(true),
+                |event| EvmLogFields::from(event),
+            ),
         }
     }
 }
-
 
 #[derive(InputObject, Clone)]
 #[graphql(name = "EvmLogSelection")]
@@ -294,21 +258,18 @@ pub struct EvmLogSelectionInput {
     pub data: Option<EvmLogDataSelectionInput>,
 }
 
-
 impl From<EvmLogSelectionInput> for EvmLogSelection {
     fn from(selection: EvmLogSelectionInput) -> Self {
         EvmLogSelection {
             contract: selection.contract,
             filter: selection.filter.unwrap_or_default(),
-            data: selection.data.map_or_else(|| {
-                EvmLogDataSelection::new(true)
-            }, |data| {
-                EvmLogDataSelection::from(data)
-            }),
+            data: selection.data.map_or_else(
+                || EvmLogDataSelection::new(true),
+                |data| EvmLogDataSelection::from(data),
+            ),
         }
     }
 }
-
 
 #[derive(InputObject, Clone)]
 #[graphql(name = "EthereumTransactionSelection")]
@@ -318,21 +279,18 @@ pub struct EthTransactSelectionInput {
     pub data: Option<CallDataSelectionInput>,
 }
 
-
 impl From<EthTransactSelectionInput> for EthTransactSelection {
     fn from(selection: EthTransactSelectionInput) -> Self {
         EthTransactSelection {
             contract: selection.contract,
             sighash: selection.sighash,
-            data: selection.data.map_or_else(|| {
-                CallDataSelection::new(true)
-            }, |data| {
-                CallDataSelection::from(data)
-            })
+            data: selection.data.map_or_else(
+                || CallDataSelection::new(true),
+                |data| CallDataSelection::from(data),
+            ),
         }
     }
 }
-
 
 #[derive(InputObject, Clone)]
 #[graphql(name = "ContractsEventSelection")]
@@ -341,20 +299,17 @@ pub struct ContractsEventSelectionInput {
     pub data: Option<EventDataSelectionInput>,
 }
 
-
 impl From<ContractsEventSelectionInput> for ContractsEventSelection {
     fn from(selection: ContractsEventSelectionInput) -> Self {
         ContractsEventSelection {
             contract: selection.contract,
-            data: selection.data.map_or_else(|| {
-                EventDataSelection::new(true)
-            }, |data| {
-                EventDataSelection::from(data)
-            })
+            data: selection.data.map_or_else(
+                || EventDataSelection::new(true),
+                |data| EventDataSelection::from(data),
+            ),
         }
     }
 }
-
 
 #[derive(InputObject, Clone)]
 #[graphql(name = "GearMessageEnqueuedSelection")]
@@ -363,20 +318,17 @@ pub struct GearMessageEnqueuedSelectionInput {
     pub data: Option<EventDataSelectionInput>,
 }
 
-
 impl From<GearMessageEnqueuedSelectionInput> for GearMessageEnqueuedSelection {
     fn from(selection: GearMessageEnqueuedSelectionInput) -> Self {
         GearMessageEnqueuedSelection {
             program: selection.program,
-            data: selection.data.map_or_else(|| {
-                EventDataSelection::new(true)
-            }, |data| {
-                EventDataSelection::from(data)
-            })
+            data: selection.data.map_or_else(
+                || EventDataSelection::new(true),
+                |data| EventDataSelection::from(data),
+            ),
         }
     }
 }
-
 
 #[derive(InputObject, Clone)]
 #[graphql(name = "GearUserMessageSentSelection")]
@@ -385,20 +337,17 @@ pub struct GearUserMessageSentSelectionInput {
     pub data: Option<EventDataSelectionInput>,
 }
 
-
 impl From<GearUserMessageSentSelectionInput> for GearUserMessageSentSelection {
     fn from(selection: GearUserMessageSentSelectionInput) -> Self {
         GearUserMessageSentSelection {
             program: selection.program,
-            data: selection.data.map_or_else(|| {
-                EventDataSelection::new(true)
-            }, |data| {
-                EventDataSelection::from(data)
-            })
+            data: selection.data.map_or_else(
+                || EventDataSelection::new(true),
+                |data| EventDataSelection::from(data),
+            ),
         }
     }
 }
-
 
 #[derive(InputObject, Clone)]
 #[graphql(name = "AcalaEvmLog")]
@@ -406,7 +355,6 @@ pub struct AcalaEvmLogInput {
     pub contract: Option<String>,
     pub filter: Option<Vec<Vec<String>>>,
 }
-
 
 impl From<AcalaEvmLogInput> for AcalaEvmLog {
     fn from(input: AcalaEvmLogInput) -> Self {
@@ -417,7 +365,6 @@ impl From<AcalaEvmLogInput> for AcalaEvmLog {
     }
 }
 
-
 #[derive(InputObject, Clone)]
 #[graphql(name = "AcalaEvmEventSelection")]
 pub struct AcalaEvmEventSelectionInput {
@@ -426,7 +373,6 @@ pub struct AcalaEvmEventSelectionInput {
     pub data: Option<EventDataSelectionInput>,
 }
 
-
 impl From<AcalaEvmEventSelectionInput> for AcalaEvmEventSelection {
     fn from(selection: AcalaEvmEventSelectionInput) -> Self {
         AcalaEvmEventSelection {
@@ -434,11 +380,10 @@ impl From<AcalaEvmEventSelectionInput> for AcalaEvmEventSelection {
             logs: selection.logs.map_or_else(Vec::new, |logs| {
                 logs.into_iter().map(AcalaEvmLog::from).collect()
             }),
-            data: selection.data.map_or_else(|| {
-                EventDataSelection::new(true)
-            }, |data| {
-                EventDataSelection::from(data)
-            }),
+            data: selection.data.map_or_else(
+                || EventDataSelection::new(true),
+                |data| EventDataSelection::from(data),
+            ),
         }
     }
 }

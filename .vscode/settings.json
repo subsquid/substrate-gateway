@@ -1,8 +1,7 @@
 {
-    "rust-analyzer.checkOnSave.command": "clippy",
-    "rust-analyzer.rustfmt.extraArgs": ["--config-path", "../.rustfmt.toml"],
-    "[rust]": {
-      "editor.formatOnSave": true,
-      "editor.rulers": [100]
-    }
+  "rust-analyzer.checkOnSave.command": "clippy",
+  "[rust]": {
+    "editor.formatOnSave": true,
+    "editor.rulers": [100]
+  }
 }

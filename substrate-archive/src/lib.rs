@@ -1,11 +1,11 @@
-pub use traits::*;
 pub use options::BatchOptions;
+pub use traits::*;
 
-pub mod selection;
-pub mod fields;
-pub mod postgres;
-pub mod error;
 pub mod entities;
+pub mod error;
+pub mod fields;
 mod metrics;
-mod traits;
 mod options;
+pub mod postgres;
+pub mod selection;
+mod traits;

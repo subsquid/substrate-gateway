@@ -1,19 +1,18 @@
-use std::collections::{HashMap, HashSet};
-use sqlx::{Pool, Arguments};
-use sqlx::postgres::{PgArguments, Postgres};
-use crate::entities::{Batch, Event, BlockHeader, EvmLog, Call, Extrinsic};
-use crate::error::Error;
-use crate::fields::{ExtrinsicFields, EventFields, CallFields, EvmLogFields};
-use crate::selection::{
-    CallSelection, CallDataSelection, EventSelection,
-    EvmLogSelection, ContractsEventSelection, EthTransactSelection,
-    GearMessageEnqueuedSelection, GearUserMessageSentSelection,
-    EventDataSelection, AcalaEvmEventSelection, AcalaEvmLog,
-};
-use crate::metrics::ObserverExt;
-use super::BatchOptions;
+use super::serializer::{CallSerializer, EventSerializer, EvmLogSerializer, ExtrinsicSerializer};
 use super::utils::unify_and_merge;
-use super::serializer::{CallSerializer, EventSerializer, ExtrinsicSerializer, EvmLogSerializer};
+use super::BatchOptions;
+use crate::entities::{Batch, BlockHeader, Call, Event, EvmLog, Extrinsic};
+use crate::error::Error;
+use crate::fields::{CallFields, EventFields, EvmLogFields, ExtrinsicFields};
+use crate::metrics::ObserverExt;
+use crate::selection::{
+    AcalaEvmEventSelection, AcalaEvmLog, CallDataSelection, CallSelection, ContractsEventSelection,
+    EthTransactSelection, EventDataSelection, EventSelection, EvmLogSelection,
+    GearMessageEnqueuedSelection, GearUserMessageSentSelection,
+};
+use sqlx::postgres::{PgArguments, Postgres};
+use sqlx::{Arguments, Pool};
+use std::collections::{HashMap, HashSet};
 
 pub struct BatchLoader<'a> {
     pool: Pool<Postgres>,
@@ -54,43 +53,65 @@ impl<'a> BatchLoader<'a> {
         let mut contracts_events = self.load_contracts_events().await?;
         let mut messages_enqueued = self.load_messages_enqueued().await?;
         let mut messages_sent = self.load_messages_sent().await?;
-        let mut acala_evm_executed = self.load_acala_evm_event(
-            self.acala_evm_executed_selections,
-            "acala_evm_executed",
-            "acala_evm_executed_log"
-        ).await?;
-        let mut acala_evm_failed = self.load_acala_evm_event(
-            self.acala_evm_executed_failed_selections,
-            "acala_evm_executed_failed",
-            "acala_evm_executed_failed_log"
-        ).await?;
+        let mut acala_evm_executed = self
+            .load_acala_evm_event(
+                self.acala_evm_executed_selections,
+                "acala_evm_executed",
+                "acala_evm_executed_log",
+            )
+            .await?;
+        let mut acala_evm_failed = self
+            .load_acala_evm_event(
+                self.acala_evm_executed_failed_selections,
+                "acala_evm_executed_failed",
+                "acala_evm_executed_failed_log",
+            )
+            .await?;
         let blocks = if self.include_all_blocks {
             self.load_blocks().await?
         } else {
-            let mut block_ids = vec![];
-            calls.iter().for_each(|call| block_ids.push(call.block_id.clone()));
-            events.iter().for_each(|event| block_ids.push(event.block_id.clone()));
-            evm_logs.iter().for_each(|log| block_ids.push(log.block_id.clone()));
-            eth_transactions.iter().for_each(|call| block_ids.push(call.block_id.clone()));
-            contracts_events.iter().for_each(|event| block_ids.push(event.block_id.clone()));
-            messages_enqueued.iter().for_each(|event| block_ids.push(event.block_id.clone()));
-            messages_sent.iter().for_each(|event| block_ids.push(event.block_id.clone()));
-            acala_evm_executed.iter().for_each(|event| block_ids.push(event.block_id.clone()));
-            acala_evm_failed.iter().for_each(|event| block_ids.push(event.block_id.clone()));
-            block_ids.sort();
-            block_ids.dedup();
-            block_ids.truncate(self.limit as usize);
+            let mut ids = vec![];
+            calls
+                .iter()
+                .for_each(|call| ids.push(call.block_id.clone()));
+            events
+                .iter()
+                .for_each(|event| ids.push(event.block_id.clone()));
+            evm_logs
+                .iter()
+                .for_each(|log| ids.push(log.block_id.clone()));
+            eth_transactions
+                .iter()
+                .for_each(|call| ids.push(call.block_id.clone()));
+            contracts_events
+                .iter()
+                .for_each(|event| ids.push(event.block_id.clone()));
+            messages_enqueued
+                .iter()
+                .for_each(|event| ids.push(event.block_id.clone()));
+            messages_sent
+                .iter()
+                .for_each(|event| ids.push(event.block_id.clone()));
+            acala_evm_executed
+                .iter()
+                .for_each(|event| ids.push(event.block_id.clone()));
+            acala_evm_failed
+                .iter()
+                .for_each(|event| ids.push(event.block_id.clone()));
+            ids.sort();
+            ids.dedup();
+            ids.truncate(self.limit as usize);
 
-            calls.retain(|call| block_ids.contains(&call.block_id));
-            events.retain(|event| block_ids.contains(&event.block_id));
-            evm_logs.retain(|evm_log| block_ids.contains(&evm_log.block_id));
-            eth_transactions.retain(|call| block_ids.contains(&call.block_id));
-            contracts_events.retain(|event| block_ids.contains(&event.block_id));
-            messages_enqueued.retain(|event| block_ids.contains(&event.block_id));
-            messages_sent.retain(|event| block_ids.contains(&event.block_id));
-            acala_evm_executed.retain(|event| block_ids.contains(&event.block_id));
-            acala_evm_failed.retain(|event| block_ids.contains(&event.block_id));
-            self.load_blocks_by_ids(&block_ids).await?
+            calls.retain(|call| ids.contains(&call.block_id));
+            events.retain(|event| ids.contains(&event.block_id));
+            evm_logs.retain(|evm_log| ids.contains(&evm_log.block_id));
+            eth_transactions.retain(|call| ids.contains(&call.block_id));
+            contracts_events.retain(|event| ids.contains(&event.block_id));
+            messages_enqueued.retain(|event| ids.contains(&event.block_id));
+            messages_sent.retain(|event| ids.contains(&event.block_id));
+            acala_evm_executed.retain(|event| ids.contains(&event.block_id));
+            acala_evm_failed.retain(|event| ids.contains(&event.block_id));
+            self.load_blocks_by_ids(&ids).await?
         };
 
         let mut extrinsic_fields: HashMap<String, ExtrinsicFields> = HashMap::new();
@@ -123,7 +144,7 @@ impl<'a> BatchLoader<'a> {
                         } else {
                             extrinsic_fields.insert(
                                 call.extrinsic_id.clone(),
-                                selection.data.extrinsic.clone()
+                                selection.data.extrinsic.clone(),
                             );
                         }
                     }
@@ -146,7 +167,7 @@ impl<'a> BatchLoader<'a> {
                         } else {
                             extrinsic_fields.insert(
                                 call.extrinsic_id.clone(),
-                                selection.data.extrinsic.clone()
+                                selection.data.extrinsic.clone(),
                             );
                         }
                     }
@@ -156,13 +177,15 @@ impl<'a> BatchLoader<'a> {
         }
 
         let mut process_event = |event: &Event, data: &EventDataSelection| {
-            event_fields.entry(event.id.clone())
+            event_fields
+                .entry(event.id.clone())
                 .and_modify(|fields| fields.merge(&data.event))
                 .or_insert_with(|| data.event.clone());
 
             if let Some(extrinsic_id) = &event.extrinsic_id {
                 if data.event.extrinsic.any() {
-                    extrinsic_fields.entry(extrinsic_id.clone())
+                    extrinsic_fields
+                        .entry(extrinsic_id.clone())
                         .and_modify(|fields| fields.merge(&data.event.extrinsic))
                         .or_insert_with(|| data.event.extrinsic.clone());
                 }
@@ -176,10 +199,7 @@ impl<'a> BatchLoader<'a> {
                         if let Some(fields) = call_fields_to_load.get_mut(call_id) {
                             fields.merge(&data.event.call);
                         } else {
-                            call_fields_to_load.insert(
-                                call_id.clone(),
-                                data.event.call.clone()
-                            );
+                            call_fields_to_load.insert(call_id.clone(), data.event.call.clone());
                         }
                     }
                 }
@@ -236,13 +256,15 @@ impl<'a> BatchLoader<'a> {
         for log in &evm_logs {
             for selection in self.evm_log_selections {
                 if selection.r#match(log) {
-                    log_fields.entry(log.id.clone())
+                    log_fields
+                        .entry(log.id.clone())
                         .and_modify(|fields| fields.merge(&selection.data.event))
                         .or_insert_with(|| selection.data.event.clone());
 
                     if let Some(extrinsic_id) = &log.extrinsic_id {
                         if selection.data.event.extrinsic.any() {
-                            extrinsic_fields.entry(extrinsic_id.to_string())
+                            extrinsic_fields
+                                .entry(extrinsic_id.to_string())
                                 .and_modify(|fields| fields.merge(&selection.data.event.extrinsic))
                                 .or_insert_with(|| selection.data.event.extrinsic.clone());
                         }
@@ -254,10 +276,8 @@ impl<'a> BatchLoader<'a> {
                             if let Some(fields) = call_fields_to_load.get_mut(call_id) {
                                 fields.merge(&selection.data.event.call);
                             } else {
-                                call_fields_to_load.insert(
-                                    call_id.to_string(),
-                                    selection.data.event.call.clone()
-                                );
+                                call_fields_to_load
+                                    .insert(call_id.to_string(), selection.data.event.call.clone());
                             }
                         }
                     }
@@ -277,10 +297,7 @@ impl<'a> BatchLoader<'a> {
                     if let Some(call_fields) = call_fields_to_load.get_mut(&extrinsic.call_id) {
                         call_fields.merge(&fields.call);
                     } else {
-                        call_fields_to_load.insert(
-                            extrinsic.call_id.clone(),
-                            fields.call.clone()
-                        );
+                        call_fields_to_load.insert(extrinsic.call_id.clone(), fields.call.clone());
                     }
                 }
             }
@@ -309,7 +326,10 @@ impl<'a> BatchLoader<'a> {
         let mut events_by_block: HashMap<String, Vec<serde_json::Value>> = HashMap::new();
         for event in events {
             let fields = event_fields.get(&event.id).unwrap();
-            let serializer = EventSerializer { event: &event, fields };
+            let serializer = EventSerializer {
+                event: &event,
+                fields,
+            };
             let data = serde_json::to_value(serializer).unwrap();
             if events_by_block.contains_key(&event.block_id) {
                 events_by_block.get_mut(&event.block_id).unwrap().push(data);
@@ -334,7 +354,10 @@ impl<'a> BatchLoader<'a> {
         calls.append(&mut eth_transactions);
         for call in calls {
             if let Some(fields) = call_fields.remove(&call.id) {
-                let serializer = CallSerializer { call: &call, fields: &fields };
+                let serializer = CallSerializer {
+                    call: &call,
+                    fields: &fields,
+                };
                 let data = serde_json::to_value(serializer).unwrap();
                 if let Some(calls) = calls_by_block.get_mut(&call.block_id) {
                     calls.push(data);
@@ -346,17 +369,27 @@ impl<'a> BatchLoader<'a> {
 
         let mut extrinsics_by_block: HashMap<String, Vec<serde_json::Value>> = HashMap::new();
         for extrinsic in extrinsics {
-            let fields = extrinsic_fields.get(&extrinsic.id).unwrap();
-            let serializer = ExtrinsicSerializer { extrinsic: &extrinsic, fields };
+            let serializer = ExtrinsicSerializer {
+                extrinsic: &extrinsic,
+                fields: extrinsic_fields.get(&extrinsic.id).unwrap(),
+            };
             let data = serde_json::to_value(serializer).unwrap();
             if extrinsics_by_block.contains_key(&extrinsic.block_id) {
-                extrinsics_by_block.get_mut(&extrinsic.block_id).unwrap().push(data);
+                extrinsics_by_block
+                    .get_mut(&extrinsic.block_id)
+                    .unwrap()
+                    .push(data);
             } else {
                 extrinsics_by_block.insert(extrinsic.block_id.clone(), vec![data]);
             }
         }
-        let batch = self.create_batch(blocks, events_by_block, calls_by_block, extrinsics_by_block,
-                                      logs_by_block);
+        let batch = self.create_batch(
+            blocks,
+            events_by_block,
+            calls_by_block,
+            extrinsics_by_block,
+            logs_by_block,
+        );
         Ok(batch)
     }
 
@@ -364,22 +397,28 @@ impl<'a> BatchLoader<'a> {
         if self.call_selections.is_empty() {
             return Ok(Vec::new());
         }
-        let wildcard = self.call_selections
+        let wildcard = self
+            .call_selections
             .iter()
             .any(|selection| selection.name == "*");
-        let names = self.call_selections
+        let names = self
+            .call_selections
             .iter()
             .map(|selection| selection.name.clone())
             .collect::<Vec<String>>();
 
         let from_block = format!("{:010}", self.from_block);
-        let to_block = self.to_block.map(|to_block| format!("{:010}", to_block + 1));
+        let to_block = self
+            .to_block
+            .map(|to_block| format!("{:010}", to_block + 1));
 
         let build_args = |_last_id: Option<String>, len: usize, limit: i64| {
             let mut args = PgArguments::default();
-            let mut sql = String::from("SELECT block_id
+            let mut sql = String::from(
+                "SELECT block_id
                 FROM call
-                WHERE block_id > $1");
+                WHERE block_id > $1",
+            );
             let mut args_len = 1;
             args.add(&from_block);
             if let Some(to_block) = &to_block {
@@ -405,7 +444,8 @@ impl<'a> BatchLoader<'a> {
         let chunk_limit = 5000;
         let ids = self.load_ids(build_args, "call", chunk_limit).await?;
 
-        let mut query = String::from("SELECT
+        let mut query = String::from(
+            "SELECT
                 id,
                 parent_id,
                 block_id,
@@ -416,7 +456,8 @@ impl<'a> BatchLoader<'a> {
                 error,
                 origin,
                 pos::int8
-            FROM call WHERE block_id = ANY($1::char(16)[])");
+            FROM call WHERE block_id = ANY($1::char(16)[])",
+        );
         let mut args = PgArguments::default();
         args.add(&ids);
         if !wildcard {
@@ -440,13 +481,15 @@ impl<'a> BatchLoader<'a> {
                 origin,
                 pos::int8
             FROM call WHERE id = ANY($1::varchar(30)[])";
-        let mut parents_ids: Vec<String> = calls.iter()
+        let mut parents_ids: Vec<String> = calls
+            .iter()
             .filter_map(|call| call.parent_id.clone())
             .collect();
         parents_ids.sort();
         parents_ids.dedup();
         while !parents_ids.is_empty() {
-            let to_load: Vec<String> = parents_ids.iter()
+            let to_load: Vec<String> = parents_ids
+                .iter()
                 .filter_map(|parent_id| {
                     let loaded = calls.iter().any(|call| &call.id == parent_id);
                     if loaded {
@@ -464,7 +507,8 @@ impl<'a> BatchLoader<'a> {
                     .await?;
                 calls.append(&mut parents);
             }
-            parents_ids = parents_ids.iter()
+            parents_ids = parents_ids
+                .iter()
                 .filter_map(|parent_id| {
                     let call = calls.iter().find(|call| &call.id == parent_id).unwrap();
                     call.parent_id.clone()
@@ -478,10 +522,13 @@ impl<'a> BatchLoader<'a> {
 
     async fn load_calls_by_ids(&self, ids: &Vec<String>) -> Result<Vec<Call>, Error> {
         // i inject ids into the query otherwise it executes so long
-        let ids = ids.iter().map(|id| format!("'{}'", id))
+        let ids = ids
+            .iter()
+            .map(|id| format!("'{}'", id))
             .collect::<Vec<String>>()
             .join(", ");
-        let query = format!("WITH RECURSIVE recursive_call AS (
+        let query = format!(
+            "WITH RECURSIVE recursive_call AS (
                 SELECT * FROM call WHERE id IN ({})
                 UNION ALL
                 SELECT DISTINCT ON (call.id) call.*
@@ -499,7 +546,9 @@ impl<'a> BatchLoader<'a> {
                 origin,
                 pos::int8
             FROM recursive_call
-            ORDER BY block_id", ids);
+            ORDER BY block_id",
+            ids
+        );
         let calls = sqlx::query_as::<_, Call>(&query)
             .fetch_all(&self.pool)
             .observe_duration("call")
@@ -511,22 +560,28 @@ impl<'a> BatchLoader<'a> {
         if self.event_selections.is_empty() {
             return Ok(Vec::new());
         }
-        let wildcard = self.event_selections
+        let wildcard = self
+            .event_selections
             .iter()
             .any(|selection| selection.name == "*");
-        let names = self.event_selections
+        let names = self
+            .event_selections
             .iter()
             .map(|selection| selection.name.clone())
             .collect::<Vec<String>>();
 
         let from_block = format!("{:010}", self.from_block);
-        let to_block = self.to_block.map(|to_block| format!("{:010}", to_block + 1));
+        let to_block = self
+            .to_block
+            .map(|to_block| format!("{:010}", to_block + 1));
 
         let build_args = |_last_id: Option<String>, len: usize, limit: i64| {
             let mut args = PgArguments::default();
-            let mut sql = String::from("SELECT block_id
+            let mut sql = String::from(
+                "SELECT block_id
                 FROM event
-                WHERE block_id > $1");
+                WHERE block_id > $1",
+            );
             let mut args_len = 1;
             args.add(&from_block);
             if let Some(to_block) = &to_block {
@@ -552,7 +607,8 @@ impl<'a> BatchLoader<'a> {
         let chunk_limit = 5000;
         let ids = self.load_ids(build_args, "event", chunk_limit).await?;
 
-        let mut query = String::from("SELECT
+        let mut query = String::from(
+            "SELECT
                 id,
                 block_id,
                 index_in_block::int8,
@@ -563,7 +619,8 @@ impl<'a> BatchLoader<'a> {
                 args,
                 pos::int8
             FROM event
-            WHERE block_id = ANY($1::char(16)[])");
+            WHERE block_id = ANY($1::char(16)[])",
+        );
         let mut args = PgArguments::default();
         args.add(&ids);
         if !wildcard {
@@ -594,7 +651,7 @@ impl<'a> BatchLoader<'a> {
                 .observe_duration(db_table)
                 .await?;
             if result.is_empty() {
-                break
+                break;
             } else {
                 for id in result {
                     let block_id = id.split('-').next().unwrap().to_string();
@@ -612,19 +669,25 @@ impl<'a> BatchLoader<'a> {
 
     async fn load_messages_enqueued(&self) -> Result<Vec<Event>, Error> {
         if self.gear_message_enqueued_selections.is_empty() {
-            return Ok(Vec::new())
+            return Ok(Vec::new());
         }
         let id_gt = format!("{:010}", self.from_block);
-        let id_lt = self.to_block.map(|to_block| format!("{:010}", to_block + 1));
-        let programs = self.gear_message_enqueued_selections.iter()
+        let id_lt = self
+            .to_block
+            .map(|to_block| format!("{:010}", to_block + 1));
+        let programs = self
+            .gear_message_enqueued_selections
+            .iter()
             .map(|selection| selection.program.clone())
             .collect::<Vec<String>>();
 
         let build_args = |last_id: Option<String>, _len: usize, limit: i64| {
             let mut args = PgArguments::default();
-            let mut sql = String::from("SELECT event_id
+            let mut sql = String::from(
+                "SELECT event_id
                 FROM gear_message_enqueued
-                WHERE program = ANY($1) AND event_id > $2");
+                WHERE program = ANY($1) AND event_id > $2",
+            );
             let mut args_len = 2;
             args.add(&programs);
             if let Some(last_id) = &last_id {
@@ -645,7 +708,9 @@ impl<'a> BatchLoader<'a> {
             (sql, args)
         };
         let chunk_limit = 2000;
-        let ids = self.load_ids(build_args, "gear_message_enqueued", chunk_limit).await?;
+        let ids = self
+            .load_ids(build_args, "gear_message_enqueued", chunk_limit)
+            .await?;
 
         let events = sqlx::query_as::<_, Event>(EVENTS_BY_ID_QUERY)
             .bind(&ids)
@@ -657,19 +722,25 @@ impl<'a> BatchLoader<'a> {
 
     async fn load_messages_sent(&self) -> Result<Vec<Event>, Error> {
         if self.gear_user_message_sent_selections.is_empty() {
-            return Ok(Vec::new())
+            return Ok(Vec::new());
         }
         let id_gt = format!("{:010}", self.from_block);
-        let id_lt = self.to_block.map(|to_block| format!("{:010}", to_block + 1));
-        let programs = self.gear_user_message_sent_selections.iter()
+        let id_lt = self
+            .to_block
+            .map(|to_block| format!("{:010}", to_block + 1));
+        let programs = self
+            .gear_user_message_sent_selections
+            .iter()
             .map(|selection| selection.program.clone())
             .collect::<Vec<String>>();
 
         let build_args = |last_id: Option<String>, _len: usize, limit: i64| {
             let mut args = PgArguments::default();
-            let mut sql = String::from("SELECT event_id
+            let mut sql = String::from(
+                "SELECT event_id
                 FROM gear_user_message_sent
-                WHERE program = ANY($1) AND event_id > $2");
+                WHERE program = ANY($1) AND event_id > $2",
+            );
             let mut args_len = 2;
             args.add(&programs);
             if let Some(last_id) = &last_id {
@@ -690,7 +761,9 @@ impl<'a> BatchLoader<'a> {
             (sql, args)
         };
         let chunk_limit = 2000;
-        let ids = self.load_ids(build_args, "gear_user_message_sent", chunk_limit).await?;
+        let ids = self
+            .load_ids(build_args, "gear_user_message_sent", chunk_limit)
+            .await?;
 
         let events = sqlx::query_as::<_, Event>(EVENTS_BY_ID_QUERY)
             .bind(&ids)
@@ -703,11 +776,11 @@ impl<'a> BatchLoader<'a> {
     fn is_acala_evm_logs_empty(&self, logs: &Vec<AcalaEvmLog>) -> bool {
         for log in logs {
             if log.contract.is_some() {
-                return false
+                return false;
             }
             for topics in &log.filter {
                 if !topics.is_empty() {
-                    return false
+                    return false;
                 }
             }
         }
@@ -717,16 +790,21 @@ impl<'a> BatchLoader<'a> {
     async fn query_acala_evm_event(
         &self,
         selection: &AcalaEvmEventSelection,
-        event_table: &'static str
+        event_table: &'static str,
     ) -> Result<Vec<String>, Error> {
         let id_gt = format!("{:010}", self.from_block);
-        let id_lt = self.to_block.map(|to_block| format!("{:010}", to_block + 1));
+        let id_lt = self
+            .to_block
+            .map(|to_block| format!("{:010}", to_block + 1));
 
         let build_args = |last_id: Option<String>, _len: usize, limit: i64| {
             let mut args = PgArguments::default();
-            let mut sql = format!("SELECT event_id
+            let mut sql = format!(
+                "SELECT event_id
                 FROM {}
-                WHERE event_id > $1", event_table);
+                WHERE event_id > $1",
+                event_table
+            );
             let mut args_len = 1;
             if let Some(last_id) = &last_id {
                 args.add(last_id);
@@ -763,13 +841,18 @@ impl<'a> BatchLoader<'a> {
 
         for log in &selection.logs {
             let id_gt = format!("{:010}", self.from_block);
-            let id_lt = self.to_block.map(|to_block| format!("{:010}", to_block + 1));
+            let id_lt = self
+                .to_block
+                .map(|to_block| format!("{:010}", to_block + 1));
 
             let build_args = |last_id: Option<String>, _len: usize, limit: i64| {
                 let mut args = PgArguments::default();
-                let mut sql = format!("SELECT id
+                let mut sql = format!(
+                    "SELECT id
                     FROM {}
-                    WHERE id > $1", log_table);
+                    WHERE id > $1",
+                    log_table
+                );
                 let mut args_len = 1;
                 if let Some(last_id) = &last_id {
                     args.add(last_id);
@@ -831,7 +914,7 @@ impl<'a> BatchLoader<'a> {
         log_table: &'static str,
     ) -> Result<Vec<Event>, Error> {
         if selections.is_empty() {
-            return Ok(Vec::new())
+            return Ok(Vec::new());
         }
         let mut ids = Vec::new();
         for selection in selections {
@@ -853,19 +936,25 @@ impl<'a> BatchLoader<'a> {
 
     async fn load_contracts_events(&self) -> Result<Vec<Event>, Error> {
         if self.contracts_event_selections.is_empty() {
-            return Ok(Vec::new())
+            return Ok(Vec::new());
         }
         let id_gt = format!("{:010}", self.from_block);
-        let id_lt = self.to_block.map(|to_block| format!("{:010}", to_block + 1));
-        let contracts = self.contracts_event_selections.iter()
+        let id_lt = self
+            .to_block
+            .map(|to_block| format!("{:010}", to_block + 1));
+        let contracts = self
+            .contracts_event_selections
+            .iter()
             .map(|selection| selection.contract.clone())
             .collect::<Vec<String>>();
 
         let build_args = |last_id: Option<String>, _len: usize, limit: i64| {
             let mut args = PgArguments::default();
-            let mut sql = String::from("SELECT event_id
+            let mut sql = String::from(
+                "SELECT event_id
                 FROM contracts_contract_emitted
-                WHERE contract = ANY($1) AND event_id > $2");
+                WHERE contract = ANY($1) AND event_id > $2",
+            );
             let mut args_len = 2;
             args.add(&contracts);
             if let Some(last_id) = &last_id {
@@ -886,7 +975,9 @@ impl<'a> BatchLoader<'a> {
             (sql, args)
         };
         let chunk_limit = 2000;
-        let ids = self.load_ids(build_args, "contracts_contract_emitted", chunk_limit).await?;
+        let ids = self
+            .load_ids(build_args, "contracts_contract_emitted", chunk_limit)
+            .await?;
 
         let events = sqlx::query_as::<_, Event>(EVENTS_BY_ID_QUERY)
             .bind(&ids)
@@ -898,18 +989,22 @@ impl<'a> BatchLoader<'a> {
 
     async fn load_evm_logs(&self) -> Result<Vec<EvmLog>, Error> {
         if self.evm_log_selections.is_empty() {
-            return Ok(Vec::new())
+            return Ok(Vec::new());
         }
         let mut ids = Vec::new();
         for selection in self.evm_log_selections {
             let id_gt = format!("{:010}", self.from_block);
-            let id_lt = self.to_block.map(|to_block| format!("{:010}", to_block + 1));
+            let id_lt = self
+                .to_block
+                .map(|to_block| format!("{:010}", to_block + 1));
 
             let build_args = |last_id: Option<String>, _len: usize, limit: i64| {
                 let mut args = PgArguments::default();
-                let mut sql = String::from("SELECT event_id
+                let mut sql = String::from(
+                    "SELECT event_id
                     FROM frontier_evm_log
-                    WHERE event_id > $1");
+                    WHERE event_id > $1",
+                );
                 let mut args_len = 1;
                 if let Some(last_id) = &last_id {
                     args.add(last_id);
@@ -931,7 +1026,10 @@ impl<'a> BatchLoader<'a> {
                         if !topics.is_empty() {
                             args_len += 1;
                             args.add(topics);
-                            sql.push_str(&format!(" AND topic{} = ANY(${}::char(66)[])", index, args_len));
+                            sql.push_str(&format!(
+                                " AND topic{} = ANY(${}::char(66)[])",
+                                index, args_len
+                            ));
                         }
                     }
                 }
@@ -943,7 +1041,9 @@ impl<'a> BatchLoader<'a> {
                 (sql, args)
             };
             let chunk_limit = 2000;
-            let mut log_ids = self.load_ids(build_args, "frontier_evm_log", chunk_limit).await?;
+            let mut log_ids = self
+                .load_ids(build_args, "frontier_evm_log", chunk_limit)
+                .await?;
             ids.append(&mut log_ids);
         }
         self.trim_ids(&mut ids);
@@ -976,18 +1076,22 @@ impl<'a> BatchLoader<'a> {
 
     async fn load_eth_transactions(&self) -> Result<Vec<Call>, Error> {
         if self.eth_transact_selections.is_empty() {
-            return Ok(Vec::new())
+            return Ok(Vec::new());
         }
         let mut ids = Vec::new();
         for selection in self.eth_transact_selections {
             let id_gt = format!("{:010}", self.from_block);
-            let id_lt = self.to_block.map(|to_block| format!("{:010}", to_block + 1));
+            let id_lt = self
+                .to_block
+                .map(|to_block| format!("{:010}", to_block + 1));
 
             let build_args = |last_id: Option<String>, _len: usize, limit: i64| {
                 let mut args = PgArguments::default();
-                let mut sql = String::from("SELECT call_id
+                let mut sql = String::from(
+                    "SELECT call_id
                     FROM frontier_ethereum_transaction
-                    WHERE call_id > $1");
+                    WHERE call_id > $1",
+                );
                 let mut args_len = 1;
                 if let Some(last_id) = &last_id {
                     args.add(last_id);
@@ -1017,7 +1121,9 @@ impl<'a> BatchLoader<'a> {
                 (sql, args)
             };
             let chunk_limit = 2000;
-            let mut selection_ids = self.load_ids(build_args, "frontier_ethereum_transaction", chunk_limit).await?;
+            let mut selection_ids = self
+                .load_ids(build_args, "frontier_ethereum_transaction", chunk_limit)
+                .await?;
             ids.append(&mut selection_ids);
         }
         self.trim_ids(&mut ids);
@@ -1039,13 +1145,15 @@ impl<'a> BatchLoader<'a> {
             .observe_duration("call")
             .await?;
 
-        let mut parents_ids: Vec<String> = calls.iter()
+        let mut parents_ids: Vec<String> = calls
+            .iter()
             .filter_map(|call| call.parent_id.clone())
             .collect();
         parents_ids.sort();
         parents_ids.dedup();
         while !parents_ids.is_empty() {
-            let to_load: Vec<String> = parents_ids.iter()
+            let to_load: Vec<String> = parents_ids
+                .iter()
                 .filter_map(|parent_id| {
                     let loaded = calls.iter().any(|call| &call.id == parent_id);
                     if loaded {
@@ -1063,7 +1171,8 @@ impl<'a> BatchLoader<'a> {
                     .await?;
                 calls.append(&mut parents);
             }
-            parents_ids = parents_ids.iter()
+            parents_ids = parents_ids
+                .iter()
                 .filter_map(|parent_id| {
                     let call = calls.iter().find(|call| &call.id == parent_id).unwrap();
                     call.parent_id.clone()
@@ -1153,15 +1262,27 @@ impl<'a> BatchLoader<'a> {
         logs_by_block: HashMap<String, Vec<serde_json::Value>>,
     ) -> Vec<Batch> {
         for (block_id, mut data) in logs_by_block.into_iter() {
-            events_by_block.entry(block_id)
+            events_by_block
+                .entry(block_id)
                 .or_insert_with(Vec::new)
                 .append(&mut data);
         }
-        blocks.into_iter()
+        blocks
+            .into_iter()
             .map(|block| {
                 let events = events_by_block.remove(&block.id).unwrap_or_default();
-                let event_fields = vec!["id", "blockId", "indexInBlock", "phase", "evmTxHash",
-                                        "extrinsicId", "callId", "name", "args", "pos"];
+                let event_fields = vec![
+                    "id",
+                    "blockId",
+                    "indexInBlock",
+                    "phase",
+                    "evmTxHash",
+                    "extrinsicId",
+                    "callId",
+                    "name",
+                    "args",
+                    "pos",
+                ];
                 let deduplicated_events = unify_and_merge(events, event_fields);
                 Batch {
                     extrinsics: extrinsics_by_block.remove(&block.id).unwrap_or_default(),
@@ -1182,7 +1303,8 @@ impl<'a> BatchLoader<'a> {
     ) {
         if let Some(parent_id) = &call.parent_id {
             if data.call.parent.any() {
-                let parent = call_lookup.get(parent_id)
+                let parent = call_lookup
+                    .get(parent_id)
                     .expect("parent call expected to be loaded");
                 let parent_fields = CallDataSelection {
                     call: CallFields::from_parent(&data.call.parent),
@@ -1216,7 +1338,7 @@ impl<'a> BatchLoader<'a> {
 }
 
 impl BatchOptions {
-    pub(in super) fn loader(&self, pool: Pool<Postgres>) -> BatchLoader {
+    pub(super) fn loader(&self, pool: Pool<Postgres>) -> BatchLoader {
         BatchLoader {
             pool,
             limit: self.limit,

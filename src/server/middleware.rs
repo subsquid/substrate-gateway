@@ -1,7 +1,7 @@
-use std::future::{ready, Ready};
 use actix_web::dev::{forward_ready, Service, ServiceRequest, ServiceResponse, Transform};
 use actix_web::{Error, HttpMessage};
 use futures_util::future::LocalBoxFuture;
+use std::future::{ready, Ready};
 use tracing::info;
 use uuid::Uuid;
 
@@ -47,7 +47,7 @@ where
         let request_id = if let Some(value) = req.headers().get("X-REQUEST-ID") {
             value.to_str().map_or_else(
                 |_| Uuid::new_v4().to_string(),
-                |request_id| request_id.to_string()
+                |request_id| request_id.to_string(),
             )
         } else {
             Uuid::new_v4().to_string()
@@ -101,12 +101,17 @@ where
 
         Box::pin(async move {
             let res = fut.await?;
-            let x_squid_processor = res.request()
+            let x_squid_processor = res
+                .request()
                 .headers()
                 .get("X-SQUID-PROCESSOR")
                 .and_then(|value| value.to_str().ok());
-            let request_id = res.request().extensions().get::<RequestId>()
-                .expect("RequestId wasn't set").clone();
+            let request_id = res
+                .request()
+                .extensions()
+                .get::<RequestId>()
+                .expect("RequestId wasn't set")
+                .clone();
 
             info!(
                 x_squid_processor,

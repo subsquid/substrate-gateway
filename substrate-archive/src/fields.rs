@@ -19,11 +19,7 @@ impl ParentCallFields {
     }
 
     pub fn any(&self) -> bool {
-        self._all ||
-        self.args ||
-        self.error ||
-        self.origin ||
-        self.parent
+        self._all || self.args || self.error || self.origin || self.parent
     }
 }
 
@@ -48,22 +44,13 @@ impl CallFields {
     }
 
     pub fn any(&self) -> bool {
-        self._all ||
-        self.error ||
-        self.origin ||
-        self.args ||
-        self.parent.any()
+        self._all || self.error || self.origin || self.args || self.parent.any()
     }
 
     pub fn selected_fields(&self) -> Vec<&str> {
         let mut fields = vec![];
         if self._all {
-            fields.extend_from_slice(&[
-                "error",
-                "origin",
-                "args",
-                "parent_id",
-            ]);
+            fields.extend_from_slice(&["error", "origin", "args", "parent_id"]);
         } else {
             if self.error {
                 fields.push("error");
@@ -113,16 +100,16 @@ impl ExtrinsicFields {
     }
 
     pub fn any(&self) -> bool {
-        self._all ||
-        self.index_in_block ||
-        self.version ||
-        self.signature ||
-        self.success ||
-        self.error ||
-        self.hash ||
-        self.call.any() ||
-        self.fee ||
-        self.tip
+        self._all
+            || self.index_in_block
+            || self.version
+            || self.signature
+            || self.success
+            || self.error
+            || self.hash
+            || self.call.any()
+            || self.fee
+            || self.tip
     }
 
     pub fn selected_fields(&self) -> Vec<&str> {

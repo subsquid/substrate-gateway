@@ -1,7 +1,6 @@
 use super::selection::{
-    CallSelection, EventSelection, EvmLogSelection, EthTransactSelection,
-    ContractsEventSelection, GearMessageEnqueuedSelection, GearUserMessageSentSelection,
-    AcalaEvmEventSelection
+    AcalaEvmEventSelection, CallSelection, ContractsEventSelection, EthTransactSelection,
+    EventSelection, EvmLogSelection, GearMessageEnqueuedSelection, GearUserMessageSentSelection,
 };
 
 pub struct BatchOptions {

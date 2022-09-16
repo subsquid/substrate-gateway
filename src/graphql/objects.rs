@@ -1,6 +1,6 @@
 use async_graphql::Object;
 use chrono::{DateTime, Utc};
-use substrate_archive::entities::{Status, Metadata, Batch, BlockHeader};
+use substrate_archive::entities::{Batch, BlockHeader, Metadata, Status};
 
 pub struct StatusObject(Status);
 

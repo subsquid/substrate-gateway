@@ -1,6 +1,6 @@
-use crate::fields::{ExtrinsicFields, EventFields, EvmLogFields};
+use crate::entities::{Call, Event, EvmLog, Extrinsic};
+use crate::fields::{EventFields, EvmLogFields, ExtrinsicFields};
 use crate::selection::CallDataSelection;
-use crate::entities::{Call, Event, Extrinsic, EvmLog};
 use serde::ser::SerializeStruct;
 
 pub struct ExtrinsicSerializer<'a> {
@@ -16,7 +16,9 @@ impl<'a> serde::Serialize for ExtrinsicSerializer<'a> {
         state.serialize_field("pos", &self.extrinsic.pos)?;
         for field in fields {
             match field {
-                "index_in_block" => state.serialize_field("indexInBlock", &self.extrinsic.index_in_block)?,
+                "index_in_block" => {
+                    state.serialize_field("indexInBlock", &self.extrinsic.index_in_block)?
+                }
                 "version" => state.serialize_field("version", &self.extrinsic.version)?,
                 "signature" => state.serialize_field("signature", &self.extrinsic.signature)?,
                 "call_id" => state.serialize_field("callId", &self.extrinsic.call_id)?,
@@ -46,7 +48,9 @@ impl<'a> serde::Serialize for EventSerializer<'a> {
         state.serialize_field("name", &self.event.name)?;
         for field in fields {
             match field {
-                "index_in_block" => state.serialize_field("indexInBlock", &self.event.index_in_block)?,
+                "index_in_block" => {
+                    state.serialize_field("indexInBlock", &self.event.index_in_block)?
+                }
                 "phase" => state.serialize_field("phase", &self.event.phase)?,
                 "extrinsic_id" => state.serialize_field("extrinsicId", &self.event.extrinsic_id)?,
                 "call_id" => state.serialize_field("callId", &self.event.call_id)?,
@@ -72,7 +76,9 @@ impl<'a> serde::Serialize for EvmLogSerializer<'a> {
         state.serialize_field("name", &self.log.name)?;
         for field in fields {
             match field {
-                "index_in_block" => state.serialize_field("indexInBlock", &self.log.index_in_block)?,
+                "index_in_block" => {
+                    state.serialize_field("indexInBlock", &self.log.index_in_block)?
+                }
                 "phase" => state.serialize_field("phase", &self.log.phase)?,
                 "extrinsic_id" => state.serialize_field("extrinsicId", &self.log.extrinsic_id)?,
                 "call_id" => state.serialize_field("callId", &self.log.call_id)?,

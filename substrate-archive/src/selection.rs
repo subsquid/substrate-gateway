@@ -1,11 +1,9 @@
-use super::fields::{EventFields, CallFields, ExtrinsicFields, EvmLogFields};
-
+use super::fields::{CallFields, EventFields, EvmLogFields, ExtrinsicFields};
 
 #[derive(Debug)]
 pub struct EventDataSelection {
     pub event: EventFields,
 }
-
 
 impl EventDataSelection {
     pub fn new(value: bool) -> Self {
@@ -15,13 +13,11 @@ impl EventDataSelection {
     }
 }
 
-
 #[derive(Debug, Clone)]
 pub struct CallDataSelection {
     pub call: CallFields,
     pub extrinsic: ExtrinsicFields,
 }
-
 
 impl CallDataSelection {
     pub fn new(value: bool) -> Self {
@@ -40,12 +36,10 @@ impl CallDataSelection {
     }
 }
 
-
 #[derive(Debug)]
 pub struct EvmLogDataSelection {
     pub event: EvmLogFields,
 }
-
 
 impl EvmLogDataSelection {
     pub fn new(value: bool) -> Self {
@@ -55,20 +49,17 @@ impl EvmLogDataSelection {
     }
 }
 
-
 #[derive(Debug)]
 pub struct EventSelection {
     pub name: String,
     pub data: EventDataSelection,
 }
 
-
 #[derive(Debug)]
 pub struct CallSelection {
     pub name: String,
     pub data: CallDataSelection,
 }
-
 
 #[derive(Debug)]
 pub struct EvmLogSelection {
@@ -77,14 +68,12 @@ pub struct EvmLogSelection {
     pub data: EvmLogDataSelection,
 }
 
-
 #[derive(Debug)]
 pub struct EthTransactSelection {
     pub contract: String,
     pub sighash: Option<String>,
     pub data: CallDataSelection,
 }
-
 
 #[derive(Debug)]
 pub struct ContractsEventSelection {

@@ -1,4 +1,4 @@
-use crate::fields::{ExtrinsicFields, CallFields, ParentCallFields, EventFields, EvmLogFields};
+use crate::fields::{CallFields, EventFields, EvmLogFields, ExtrinsicFields, ParentCallFields};
 
 impl ParentCallFields {
     pub fn merge(&mut self, fields: &ParentCallFields) {

@@ -1,5 +1,7 @@
 use clap::Parser;
 use sqlx::postgres::PgPoolOptions;
+use sqlx::Executor;
+use std::boxed::Box;
 use std::time::Duration;
 use substrate_gateway::SubstrateGateway;
 
@@ -15,6 +17,10 @@ struct Args {
     /// Maximum number of connections supported by pool
     #[clap(long, default_value_t = 1)]
     database_max_connections: u32,
+
+    /// Abort any statement that takes more than the specified amount of ms
+    #[clap(long, default_value_t = 0)]
+    database_statement_timeout: u32,
 
     /// EVM pallet support
     #[clap(long)]
@@ -42,7 +48,17 @@ async fn main() -> std::io::Result<()> {
     let pool = PgPoolOptions::new()
         .max_connections(args.database_max_connections)
         .idle_timeout(Duration::from_secs(10))
-        .connect_timeout(Duration::from_secs(5))
+        .acquire_timeout(Duration::from_secs(5))
+        .after_connect(move |connection, _meta| {
+            Box::pin(async move {
+                let query = format!(
+                    "SET statement_timeout = {}",
+                    args.database_statement_timeout
+                );
+                connection.execute(&*query).await?;
+                Ok(())
+            })
+        })
         .connect_lazy(&args.database_url)
         .unwrap();
     SubstrateGateway::new(pool)

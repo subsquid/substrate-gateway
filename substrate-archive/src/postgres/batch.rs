@@ -987,12 +987,35 @@ impl<'a> BatchLoader<'a> {
         Ok(events)
     }
 
+    fn group_evm_selections(
+        &'a self,
+        selections: &'a Vec<EvmLogSelection>,
+    ) -> Vec<Vec<&EvmLogSelection>> {
+        let mut grouped: Vec<Vec<&EvmLogSelection>> = vec![];
+        for selection in selections {
+            let group = grouped.iter_mut().find(|group| {
+                group.iter().any(|group_selection| {
+                    if group_selection.filter != selection.filter {
+                        return false;
+                    }
+                    true
+                })
+            });
+            if let Some(group) = group {
+                group.push(selection);
+            } else {
+                grouped.push(vec![selection]);
+            }
+        }
+        grouped
+    }
+
     async fn load_evm_logs(&self) -> Result<Vec<EvmLog>, Error> {
         if self.evm_log_selections.is_empty() {
             return Ok(Vec::new());
         }
         let mut ids = Vec::new();
-        for selection in self.evm_log_selections {
+        for selections in self.group_evm_selections(&self.evm_log_selections) {
             let id_gt = format!("{:010}", self.from_block);
             let id_lt = self
                 .to_block
@@ -1016,13 +1039,18 @@ impl<'a> BatchLoader<'a> {
                     args.add(id_lt);
                     sql.push_str(&format!(" AND event_id < ${}", args_len));
                 }
-                if selection.contract != "*" {
+                let wildcard = selections.iter().any(|selection| selection.contract == "*");
+                let contracts: Vec<String> = selections
+                    .iter()
+                    .map(|selection| selection.contract.clone())
+                    .collect();
+                if !wildcard {
                     args_len += 1;
-                    args.add(&selection.contract);
-                    sql.push_str(&format!(" AND contract = ${}", args_len));
+                    args.add(&contracts);
+                    sql.push_str(&format!(" AND contract = ANY(${}::char(42)[])", args_len));
                 }
                 for index in 0..=3 {
-                    if let Some(topics) = selection.filter.get(index) {
+                    if let Some(topics) = selections[0].filter.get(index) {
                         if !topics.is_empty() {
                             args_len += 1;
                             args.add(topics);

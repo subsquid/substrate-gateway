@@ -12,6 +12,7 @@ use crate::selection::{
 };
 use sqlx::postgres::{PgArguments, Postgres};
 use sqlx::{Arguments, Pool};
+use std::cmp::min;
 use std::collections::{HashMap, HashSet};
 
 pub struct BatchLoader<'a> {
@@ -570,42 +571,73 @@ impl<'a> BatchLoader<'a> {
             .map(|selection| selection.name.clone())
             .collect::<Vec<String>>();
 
-        let from_block = format!("{:010}", self.from_block);
-        let to_block = self
-            .to_block
-            .map(|to_block| format!("{:010}", to_block + 1));
+        let mut ids = vec![];
+        let mut range_width = self.limit;
+        let mut total_range = 0;
+        let mut from_block = self.from_block;
+        let head = if let Some(to_block) = self.to_block {
+            to_block
+        } else {
+            let query = "SELECT height::int4 as head FROM block ORDER BY height DESC LIMIT 1";
+            let head = sqlx::query_scalar::<_, i32>(query)
+                .fetch_optional(&self.pool)
+                .observe_duration("block")
+                .await?;
+            if let Some(head) = head {
+                head
+            } else {
+                return Ok(vec![]);
+            }
+        };
 
-        let build_args = |_last_id: Option<String>, len: usize, limit: i64| {
+        'outer: loop {
+            let block_gt = format!("{:010}", from_block);
+            let to_block = min(from_block + range_width, head);
+            let block_lt = format!("{:010}", to_block + 1);
+
             let mut args = PgArguments::default();
             let mut sql = String::from(
                 "SELECT block_id
                 FROM event
-                WHERE block_id > $1",
+                WHERE block_id > $1 AND block_id < $2",
             );
-            let mut args_len = 1;
-            args.add(&from_block);
-            if let Some(to_block) = &to_block {
-                args_len += 1;
-                args.add(to_block);
-                sql.push_str(&format!(" AND block_id < ${}", args_len));
-            }
+            let mut args_len = 2;
+            args.add(&block_gt);
+            args.add(&block_lt);
             if !wildcard {
                 args_len += 1;
                 args.add(&names);
                 sql.push_str(&format!(" AND name = ANY(${})", args_len));
             }
             sql.push_str(" ORDER BY block_id");
-            args_len += 1;
-            args.add(len as i64);
-            sql.push_str(&format!(" OFFSET ${}", args_len));
-            args_len += 1;
-            args.add(limit);
-            sql.push_str(&format!(" LIMIT ${}", args_len));
 
-            (sql, args)
-        };
-        let chunk_limit = 5000;
-        let ids = self.load_ids(build_args, "event", chunk_limit).await?;
+            let mut blocks = sqlx::query_scalar_with::<_, String, _>(&sql, args)
+                .fetch_all(&self.pool)
+                .observe_duration("event")
+                .await?;
+            blocks.dedup();
+            let len = i32::try_from(blocks.len()).unwrap();
+            total_range += range_width;
+
+            for block_id in blocks {
+                ids.push(block_id);
+                if ids.len() == self.limit as usize {
+                    break 'outer;
+                }
+            }
+
+            if to_block == head {
+                break;
+            }
+
+            range_width = if len == 0 {
+                min(range_width * 10, 100_000)
+            } else {
+                let total_blocks = i32::try_from(ids.len()).unwrap();
+                min((total_range / total_blocks) * (self.limit - len), 100_000)
+            };
+            from_block = to_block + 1;
+        }
 
         let mut query = String::from(
             "SELECT

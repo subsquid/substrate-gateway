@@ -23,8 +23,12 @@ impl ArchiveService for PostgresArchive {
     type Error = Error;
 
     async fn batch(&self, options: &BatchOptions) -> Result<Vec<Self::Batch>, Self::Error> {
-        let batch = options.loader(self.pool.clone()).load().await?;
-        Ok(batch)
+        if options.limit < 1 {
+            return Ok(vec![]);
+        } else {
+            let batch = options.loader(self.pool.clone()).load().await?;
+            Ok(batch)
+        }
     }
 
     async fn metadata(&self) -> Result<Vec<Self::Metadata>, Self::Error> {

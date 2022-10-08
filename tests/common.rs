@@ -122,10 +122,10 @@ impl Client {
             .send()
             .await
             .unwrap();
-        let mut parsed = response
-            .json::<GatewayResponse<BatchResponse>>()
-            .await
-            .unwrap();
-        parsed.data.batch.remove(0)
+        let text = response.text().await.unwrap();
+        match serde_json::from_str::<GatewayResponse<BatchResponse>>(&text) {
+            Ok(mut response) => response.data.batch.remove(0),
+            Err(_) => panic!("Unexpected response body: {}", text),
+        }
     }
 }

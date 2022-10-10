@@ -26,12 +26,13 @@ async fn graphql_request(
     req: HttpRequest,
     gql_req: GraphQLRequest,
 ) -> GraphQLResponse {
-    let extensions = req.extensions();
-    let request_id = extensions
+    let request_id = req
+        .extensions()
         .get::<RequestId>()
         .expect("RequestId wasn't set")
         .0
-        .as_str();
+        .clone();
+
     let x_squid_processor = req
         .headers()
         .get("X-SQUID-PROCESSOR")

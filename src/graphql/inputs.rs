@@ -51,10 +51,9 @@ impl From<CallFieldsInput> for CallFields {
             error: _all || fields.error.unwrap_or(false),
             origin: _all || fields.origin.unwrap_or(false),
             args: _all || fields.args.unwrap_or(false),
-            parent: fields.parent.map_or_else(
-                || ParentCallFields::new(_all),
-                |parent| ParentCallFields::from(parent),
-            ),
+            parent: fields
+                .parent
+                .map_or_else(|| ParentCallFields::new(_all), ParentCallFields::from),
         }
     }
 }
@@ -88,7 +87,7 @@ impl From<ExtrinsicFieldsInput> for ExtrinsicFields {
             hash: _all || fields.hash.unwrap_or(false),
             call: fields
                 .call
-                .map_or_else(|| CallFields::new(_all), |call| CallFields::from(call)),
+                .map_or_else(|| CallFields::new(_all), CallFields::from),
             fee: _all || fields.fee.unwrap_or(false),
             tip: _all || fields.tip.unwrap_or(false),
         }
@@ -114,13 +113,12 @@ impl From<EventFieldsInput> for EventFields {
             _all,
             index_in_block: _all || fields.index_in_block.unwrap_or(false),
             phase: _all || fields.phase.unwrap_or(false),
-            extrinsic: fields.extrinsic.map_or_else(
-                || ExtrinsicFields::new(_all),
-                |extrinsic| ExtrinsicFields::from(extrinsic),
-            ),
+            extrinsic: fields
+                .extrinsic
+                .map_or_else(|| ExtrinsicFields::new(_all), ExtrinsicFields::from),
             call: fields
                 .call
-                .map_or_else(|| CallFields::new(_all), |call| CallFields::from(call)),
+                .map_or_else(|| CallFields::new(_all), CallFields::from),
             args: _all || fields.args.unwrap_or(false),
         }
     }
@@ -146,13 +144,12 @@ impl From<EvmLogFieldsInput> for EvmLogFields {
             _all,
             index_in_block: _all || fields.index_in_block.unwrap_or(false),
             phase: _all || fields.phase.unwrap_or(false),
-            extrinsic: fields.extrinsic.map_or_else(
-                || ExtrinsicFields::new(_all),
-                |extrinsic| ExtrinsicFields::from(extrinsic),
-            ),
+            extrinsic: fields
+                .extrinsic
+                .map_or_else(|| ExtrinsicFields::new(_all), ExtrinsicFields::from),
             call: fields
                 .call
-                .map_or_else(|| CallFields::new(_all), |call| CallFields::from(call)),
+                .map_or_else(|| CallFields::new(_all), CallFields::from),
             args: _all || fields.args.unwrap_or(false),
             evm_tx_hash: _all || fields.evm_tx_hash.unwrap_or(false),
         }
@@ -170,7 +167,7 @@ impl From<EventDataSelectionInput> for EventDataSelection {
         EventDataSelection {
             event: data
                 .event
-                .map_or_else(|| EventFields::new(true), |event| EventFields::from(event)),
+                .map_or_else(|| EventFields::new(true), EventFields::from),
         }
     }
 }
@@ -187,11 +184,10 @@ impl From<CallDataSelectionInput> for CallDataSelection {
         CallDataSelection {
             call: data
                 .call
-                .map_or_else(|| CallFields::new(true), |call| CallFields::from(call)),
-            extrinsic: data.extrinsic.map_or_else(
-                || ExtrinsicFields::new(true),
-                |extrinsic| ExtrinsicFields::from(extrinsic),
-            ),
+                .map_or_else(|| CallFields::new(true), CallFields::from),
+            extrinsic: data
+                .extrinsic
+                .map_or_else(|| ExtrinsicFields::new(true), ExtrinsicFields::from),
         }
     }
 }
@@ -207,10 +203,9 @@ impl From<EventSelectionInput> for EventSelection {
     fn from(selection: EventSelectionInput) -> Self {
         EventSelection {
             name: selection.name,
-            data: selection.data.map_or_else(
-                || EventDataSelection::new(true),
-                |data| EventDataSelection::from(data),
-            ),
+            data: selection
+                .data
+                .map_or_else(|| EventDataSelection::new(true), EventDataSelection::from),
         }
     }
 }
@@ -225,10 +220,9 @@ impl From<CallSelectionInput> for CallSelection {
     fn from(selection: CallSelectionInput) -> Self {
         CallSelection {
             name: selection.name,
-            data: selection.data.map_or_else(
-                || CallDataSelection::new(true),
-                |data| CallDataSelection::from(data),
-            ),
+            data: selection
+                .data
+                .map_or_else(|| CallDataSelection::new(true), CallDataSelection::from),
         }
     }
 }
@@ -242,10 +236,9 @@ pub struct EvmLogDataSelectionInput {
 impl From<EvmLogDataSelectionInput> for EvmLogDataSelection {
     fn from(data: EvmLogDataSelectionInput) -> Self {
         EvmLogDataSelection {
-            event: data.event.map_or_else(
-                || EvmLogFields::new(true),
-                |event| EvmLogFields::from(event),
-            ),
+            event: data
+                .event
+                .map_or_else(|| EvmLogFields::new(true), EvmLogFields::from),
         }
     }
 }
@@ -263,10 +256,9 @@ impl From<EvmLogSelectionInput> for EvmLogSelection {
         EvmLogSelection {
             contract: selection.contract,
             filter: selection.filter.unwrap_or_default(),
-            data: selection.data.map_or_else(
-                || EvmLogDataSelection::new(true),
-                |data| EvmLogDataSelection::from(data),
-            ),
+            data: selection
+                .data
+                .map_or_else(|| EvmLogDataSelection::new(true), EvmLogDataSelection::from),
         }
     }
 }
@@ -284,10 +276,9 @@ impl From<EthTransactSelectionInput> for EthTransactSelection {
         EthTransactSelection {
             contract: selection.contract,
             sighash: selection.sighash,
-            data: selection.data.map_or_else(
-                || CallDataSelection::new(true),
-                |data| CallDataSelection::from(data),
-            ),
+            data: selection
+                .data
+                .map_or_else(|| CallDataSelection::new(true), CallDataSelection::from),
         }
     }
 }
@@ -303,10 +294,9 @@ impl From<ContractsEventSelectionInput> for ContractsEventSelection {
     fn from(selection: ContractsEventSelectionInput) -> Self {
         ContractsEventSelection {
             contract: selection.contract,
-            data: selection.data.map_or_else(
-                || EventDataSelection::new(true),
-                |data| EventDataSelection::from(data),
-            ),
+            data: selection
+                .data
+                .map_or_else(|| EventDataSelection::new(true), EventDataSelection::from),
         }
     }
 }
@@ -322,10 +312,9 @@ impl From<GearMessageEnqueuedSelectionInput> for GearMessageEnqueuedSelection {
     fn from(selection: GearMessageEnqueuedSelectionInput) -> Self {
         GearMessageEnqueuedSelection {
             program: selection.program,
-            data: selection.data.map_or_else(
-                || EventDataSelection::new(true),
-                |data| EventDataSelection::from(data),
-            ),
+            data: selection
+                .data
+                .map_or_else(|| EventDataSelection::new(true), EventDataSelection::from),
         }
     }
 }
@@ -341,10 +330,9 @@ impl From<GearUserMessageSentSelectionInput> for GearUserMessageSentSelection {
     fn from(selection: GearUserMessageSentSelectionInput) -> Self {
         GearUserMessageSentSelection {
             program: selection.program,
-            data: selection.data.map_or_else(
-                || EventDataSelection::new(true),
-                |data| EventDataSelection::from(data),
-            ),
+            data: selection
+                .data
+                .map_or_else(|| EventDataSelection::new(true), EventDataSelection::from),
         }
     }
 }
@@ -380,10 +368,9 @@ impl From<AcalaEvmEventSelectionInput> for AcalaEvmEventSelection {
             logs: selection.logs.map_or_else(Vec::new, |logs| {
                 logs.into_iter().map(AcalaEvmLog::from).collect()
             }),
-            data: selection.data.map_or_else(
-                || EventDataSelection::new(true),
-                |data| EventDataSelection::from(data),
-            ),
+            data: selection
+                .data
+                .map_or_else(|| EventDataSelection::new(true), EventDataSelection::from),
         }
     }
 }

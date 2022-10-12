@@ -2164,6 +2164,7 @@ version = "0.1.0"
 dependencies = [
  "async-trait",
  "chrono",
+ "clap",
  "lazy_static",
  "pin-project",
  "prometheus",

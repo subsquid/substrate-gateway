@@ -6,7 +6,7 @@ use sqlx::postgres::PgPoolOptions;
 use std::sync::Once;
 use std::time::Duration;
 use std::{env, thread};
-use substrate_gateway::SubstrateGateway;
+use substrate_gateway::{DatabaseType, SubstrateGateway};
 
 static INIT: Once = Once::new();
 
@@ -17,7 +17,7 @@ pub fn launch_gateway() {
                 let database_url = env::var("TEST_DATABASE_URL").unwrap();
                 let pool = PgPoolOptions::new().connect(&database_url).await.unwrap();
                 spawn(async {
-                    SubstrateGateway::new(pool)
+                    SubstrateGateway::new(pool, DatabaseType::Postgres)
                         .evm_support(true)
                         .contracts_support(true)
                         .gear_support(true)

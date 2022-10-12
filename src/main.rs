@@ -3,7 +3,7 @@ use sqlx::postgres::PgPoolOptions;
 use sqlx::Executor;
 use std::boxed::Box;
 use std::time::Duration;
-use substrate_gateway::SubstrateGateway;
+use substrate_gateway::{DatabaseType, SubstrateGateway};
 
 mod logger;
 
@@ -21,6 +21,10 @@ struct Args {
     /// Abort any statement that takes more than the specified amount of ms
     #[clap(long, default_value_t = 0)]
     database_statement_timeout: u32,
+
+    /// Database type
+    #[clap(long, value_enum, default_value_t = DatabaseType::Postgres)]
+    database_type: DatabaseType,
 
     /// EVM pallet support
     #[clap(long)]
@@ -61,7 +65,7 @@ async fn main() -> std::io::Result<()> {
         })
         .connect_lazy(&args.database_url)
         .unwrap();
-    SubstrateGateway::new(pool)
+    SubstrateGateway::new(pool, args.database_type)
         .evm_support(args.evm_support)
         .contracts_support(args.contracts_support)
         .gear_support(args.gear_support)

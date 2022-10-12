@@ -1,6 +1,6 @@
 use super::serializer::{CallSerializer, EventSerializer, EvmLogSerializer, ExtrinsicSerializer};
 use super::utils::unify_and_merge;
-use super::BatchOptions;
+use super::{BatchOptions, DatabaseType};
 use crate::entities::{Batch, BlockHeader, Call, Event, EvmLog, Extrinsic};
 use crate::error::Error;
 use crate::fields::{CallFields, EventFields, EvmLogFields, ExtrinsicFields};
@@ -17,6 +17,7 @@ use std::collections::{HashMap, HashSet};
 
 pub struct BatchLoader<'a> {
     pool: Pool<Postgres>,
+    database_type: DatabaseType,
     limit: i32,
     from_block: i32,
     to_block: Option<i32>,
@@ -595,11 +596,16 @@ impl<'a> BatchLoader<'a> {
             let to_block = min(from_block + range_width, head);
             let block_lt = format!("{:010}", to_block + 1);
 
+            let table = match self.database_type {
+                DatabaseType::Cockroach => "event@idx_event__name__block",
+                DatabaseType::Postgres => "event",
+            };
             let mut args = PgArguments::default();
-            let mut sql = String::from(
+            let mut sql = format!(
                 "SELECT block_id
-                FROM event
+                FROM {}
                 WHERE block_id > $1 AND block_id < $2",
+                table
             );
             let mut args_len = 2;
             args.add(&block_gt);
@@ -1398,9 +1404,10 @@ impl<'a> BatchLoader<'a> {
 }
 
 impl BatchOptions {
-    pub(super) fn loader(&self, pool: Pool<Postgres>) -> BatchLoader {
+    pub(super) fn loader(&self, pool: Pool<Postgres>, database_type: DatabaseType) -> BatchLoader {
         BatchLoader {
             pool,
+            database_type,
             limit: self.limit,
             from_block: self.from_block,
             to_block: self.to_block,

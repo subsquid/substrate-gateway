@@ -2,6 +2,7 @@ use async_graphql::{EmptyMutation, EmptySubscription, Schema};
 use graphql::{AcalaSupport, ContractsSupport, EvmSupport, GearSupport, QueryRoot};
 use sqlx::{Pool, Postgres};
 use std::boxed::Box;
+pub use substrate_archive::postgres::DatabaseType;
 use substrate_archive::postgres::PostgresArchive;
 
 mod graphql;
@@ -10,6 +11,7 @@ mod server;
 
 pub struct SubstrateGateway {
     pool: Pool<Postgres>,
+    database_type: DatabaseType,
     evm_support: bool,
     acala_support: bool,
     contracts_support: bool,
@@ -17,9 +19,10 @@ pub struct SubstrateGateway {
 }
 
 impl SubstrateGateway {
-    pub fn new(pool: Pool<Postgres>) -> Self {
+    pub fn new(pool: Pool<Postgres>, database_type: DatabaseType) -> Self {
         SubstrateGateway {
             pool,
+            database_type,
             evm_support: false,
             acala_support: false,
             contracts_support: false,
@@ -48,7 +51,10 @@ impl SubstrateGateway {
     }
 
     pub async fn run(&self) -> std::io::Result<()> {
-        let archive = Box::new(PostgresArchive::new(self.pool.clone()));
+        let archive = Box::new(PostgresArchive::new(
+            self.pool.clone(),
+            self.database_type.clone(),
+        ));
         let query = QueryRoot { archive };
         let schema = Schema::build(query, EmptyMutation, EmptySubscription)
             .data(EvmSupport(self.evm_support))

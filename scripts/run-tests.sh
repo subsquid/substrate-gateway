@@ -6,7 +6,7 @@ export TEST_DATABASE_URL="postgres://$DB_USER:$DB_PASS@$DB_HOST:$DB_PORT/$DB_NAM
 
 docker-compose up -d || exit 1
 
-# sleep until postgres is ready to acceps commands
+# sleep until postgres is ready to accept commands
 until psql -U $DB_USER -h $DB_HOST -p $DB_PORT -c '\q' &>/dev/null; do
   sleep 1
 done

@@ -10,8 +10,16 @@ mod selection;
 mod serializer;
 mod utils;
 
+#[cfg_attr(feature = "clap", derive(clap::ValueEnum))]
+#[derive(Clone, Debug)]
+pub enum DatabaseType {
+    Postgres,
+    Cockroach,
+}
+
 pub struct PostgresArchive {
     pool: Pool<Postgres>,
+    database_type: DatabaseType,
 }
 
 #[async_trait::async_trait]
@@ -26,7 +34,10 @@ impl ArchiveService for PostgresArchive {
         if options.limit < 1 {
             return Ok(vec![]);
         } else {
-            let batch = options.loader(self.pool.clone()).load().await?;
+            let batch = options
+                .loader(self.pool.clone(), self.database_type.clone())
+                .load()
+                .await?;
             Ok(batch)
         }
     }
@@ -64,7 +75,10 @@ impl ArchiveService for PostgresArchive {
 }
 
 impl PostgresArchive {
-    pub fn new(pool: Pool<Postgres>) -> PostgresArchive {
-        PostgresArchive { pool }
+    pub fn new(pool: Pool<Postgres>, database_type: DatabaseType) -> PostgresArchive {
+        PostgresArchive {
+            pool,
+            database_type,
+        }
     }
 }

@@ -1,8 +1,17 @@
-export PGPASSWORD=$TEST_DATABASE_PASSWORD
-export TEST_DATABASE_URL="postgres://$TEST_DATABASE_USER:$TEST_DATABASE_PASSWORD@$TEST_DATABASE_HOST:$TEST_DATABASE_PORT/$TEST_DATABASE_NAME"
+cd ./tests/
+source .env
 
-createdb -U $TEST_DATABASE_USER -h $TEST_DATABASE_HOST -p $TEST_DATABASE_PORT $TEST_DATABASE_NAME || exit 1
-psql -U $TEST_DATABASE_USER -h $TEST_DATABASE_HOST -p $TEST_DATABASE_PORT -d $TEST_DATABASE_NAME -f tests/db-schema.sql || exit 1
-psql -U $TEST_DATABASE_USER -h $TEST_DATABASE_HOST -p $TEST_DATABASE_PORT -d $TEST_DATABASE_NAME -f tests/data.sql || exit 1
+export PGPASSWORD=$DB_PASS
+export TEST_DATABASE_URL="postgres://$DB_USER:$DB_PASS@$DB_HOST:$DB_PORT/$DB_NAME"
+
+docker-compose up -d || exit 1
+
+# sleep until postgres is ready to acceps commands
+until psql -U $DB_USER -h $DB_HOST -p $DB_PORT -c '\q' &>/dev/null; do
+  sleep 1
+done
+
+psql -U $DB_USER -h $DB_HOST -p $DB_PORT -d $DB_NAME -f db-schema.sql || exit 1
+psql -U $DB_USER -h $DB_HOST -p $DB_PORT -d $DB_NAME -f data.sql || exit 1
 cargo test -- --nocapture
-dropdb -U $TEST_DATABASE_USER -h $TEST_DATABASE_HOST -p $TEST_DATABASE_PORT $TEST_DATABASE_NAME || exit 1
+docker-compose down || exit 1

@@ -5,13 +5,15 @@ use inputs::{
     GearMessageEnqueuedSelectionInput, GearUserMessageSentSelectionInput,
 };
 use objects::{BatchObject, MetadataObject, StatusObject};
-use substrate_archive::entities::{Batch, Metadata, Status};
+use std::sync::{Arc, Mutex};
+use substrate_archive::entities::{Metadata, Status};
 use substrate_archive::error::Error;
+use substrate_archive::postgres::BatchResponse;
 use substrate_archive::selection::{
     AcalaEvmEventSelection, CallSelection, ContractsEventSelection, EthTransactSelection,
     EventSelection, EvmLogSelection, GearMessageEnqueuedSelection, GearUserMessageSentSelection,
 };
-use substrate_archive::{ArchiveService, BatchOptions};
+use substrate_archive::{ArchiveService, BatchOptions, Selections};
 
 mod inputs;
 mod objects;
@@ -40,10 +42,12 @@ fn is_gear_supported(ctx: &Context<'_>) -> bool {
     ctx.data_unchecked::<GearSupport>().0
 }
 
+pub struct NextBlock(pub Option<i32>);
+
 pub struct QueryRoot {
     pub archive: Box<
         dyn ArchiveService<
-                Batch = Batch,
+                Batch = BatchResponse,
                 BatchOptions = BatchOptions,
                 Metadata = Metadata,
                 Status = Status,
@@ -58,7 +62,8 @@ impl QueryRoot {
     #[allow(clippy::too_many_arguments)]
     async fn batch(
         &self,
-        limit: i32,
+        ctx: &Context<'_>,
+        limit: Option<i32>,
         #[graphql(default = 0)] from_block: i32,
         to_block: Option<i32>,
         #[graphql(name = "evmLogs", visible = "is_evm_supported")] evm_log_selections: Option<
@@ -80,28 +85,31 @@ impl QueryRoot {
         #[graphql(name = "calls")] call_selections: Option<Vec<CallSelectionInput>>,
         include_all_blocks: Option<bool>,
     ) -> Result<Vec<BatchObject>> {
+        let next_block = ctx.data_unchecked::<Arc<Mutex<NextBlock>>>();
+        let selections = Selections {
+            call: self.unwrap_selections::<CallSelectionInput, CallSelection>(call_selections),
+            event: self.unwrap_selections::<EventSelectionInput, EventSelection>(event_selections),
+            evm_log: self.unwrap_selections::<EvmLogSelectionInput, EvmLogSelection>(evm_log_selections),
+            eth_transact: self.unwrap_selections::<EthTransactSelectionInput, EthTransactSelection>(eth_transact_selections),
+            contracts_event: self.unwrap_selections::<ContractsEventSelectionInput, ContractsEventSelection>(contracts_event_selections),
+            gear_message_enqueued: self.unwrap_selections::<GearMessageEnqueuedSelectionInput, GearMessageEnqueuedSelection>(gear_message_enqueued_selections),
+            gear_user_message_sent: self.unwrap_selections::<GearUserMessageSentSelectionInput, GearUserMessageSentSelection>(gear_user_message_sent_selections),
+            acala_evm_executed: self.unwrap_selections::<AcalaEvmEventSelectionInput, AcalaEvmEventSelection>(acala_evm_executed_selections),
+            acala_evm_executed_failed: self.unwrap_selections::<AcalaEvmEventSelectionInput, AcalaEvmEventSelection>(acala_evm_executed_failed_selections),
+        };
         let options = BatchOptions {
             limit,
             from_block,
             to_block,
             include_all_blocks: include_all_blocks.unwrap_or(false),
-            call_selections: self.unwrap_selections::<CallSelectionInput, CallSelection>(call_selections),
-            event_selections: self.unwrap_selections::<EventSelectionInput, EventSelection>(event_selections),
-            evm_log_selections: self.unwrap_selections::<EvmLogSelectionInput, EvmLogSelection>(evm_log_selections),
-            eth_transact_selections: self.unwrap_selections::<EthTransactSelectionInput, EthTransactSelection>(eth_transact_selections),
-            contracts_event_selections: self.unwrap_selections::<ContractsEventSelectionInput, ContractsEventSelection>(contracts_event_selections),
-            gear_message_enqueued_selections: self.unwrap_selections::<GearMessageEnqueuedSelectionInput, GearMessageEnqueuedSelection>(gear_message_enqueued_selections),
-            gear_user_message_sent_selections: self.unwrap_selections::<GearUserMessageSentSelectionInput, GearUserMessageSentSelection>(gear_user_message_sent_selections),
-            acala_evm_executed_selections: self.unwrap_selections::<AcalaEvmEventSelectionInput, AcalaEvmEventSelection>(acala_evm_executed_selections),
-            acala_evm_executed_failed_selections: self.unwrap_selections::<AcalaEvmEventSelectionInput, AcalaEvmEventSelection>(acala_evm_executed_failed_selections),
+            selections,
         };
-        let batch = self
-            .archive
-            .batch(&options)
-            .await?
-            .into_iter()
-            .map(|batch| batch.into())
-            .collect();
+        let resp = self.archive.batch(&options).await?;
+        if let Some(next) = resp.next_block {
+            let mut next_block = next_block.lock().unwrap();
+            next_block.0 = Some(next);
+        }
+        let batch = resp.data.into_iter().map(|batch| batch.into()).collect();
         Ok(batch)
     }
 

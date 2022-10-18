@@ -1,4 +1,6 @@
-use crate::graphql::QueryRoot;
+use std::sync::{Arc, Mutex};
+
+use crate::graphql::{NextBlock, QueryRoot};
 use crate::metrics::{HTTP_REQUESTS_ERRORS, HTTP_REQUESTS_TOTAL, HTTP_RESPONSE_TIME_SECONDS};
 use actix_web::dev::Service;
 use actix_web::guard::{Get, Post};
@@ -42,7 +44,10 @@ async fn graphql_request(
         request_id,
         query = gql_req.0.query.as_str()
     );
-    let response = schema.execute(gql_req.into_inner()).await;
+    let next_block = Arc::new(Mutex::new(NextBlock(None)));
+    let mut response = schema
+        .execute(gql_req.into_inner().data(next_block.clone()))
+        .await;
     if response.is_err() {
         for error in &response.errors {
             error!(
@@ -52,6 +57,17 @@ async fn graphql_request(
             );
         }
         HTTP_REQUESTS_ERRORS.with_label_values(&[]).inc();
+    }
+    let lock = next_block.lock().unwrap();
+    if let Some(next_block) = lock.0 {
+        let data = response.data.into_json().unwrap();
+        let batch = data.get("batch").unwrap();
+        response.data = serde_json::json!({
+            "data": batch,
+            "nextBlock": next_block
+        })
+        .try_into()
+        .unwrap();
     }
     response.into()
 }

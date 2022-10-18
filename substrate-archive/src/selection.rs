@@ -1,6 +1,6 @@
 use super::fields::{CallFields, EventFields, EvmLogFields, ExtrinsicFields};
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct EventDataSelection {
     pub event: EventFields,
 }
@@ -36,7 +36,7 @@ impl CallDataSelection {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct EvmLogDataSelection {
     pub event: EvmLogFields,
 }
@@ -49,57 +49,57 @@ impl EvmLogDataSelection {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct EventSelection {
     pub name: String,
     pub data: EventDataSelection,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct CallSelection {
     pub name: String,
     pub data: CallDataSelection,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct EvmLogSelection {
     pub contract: String,
     pub filter: Vec<Vec<String>>,
     pub data: EvmLogDataSelection,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct EthTransactSelection {
     pub contract: String,
     pub sighash: Option<String>,
     pub data: CallDataSelection,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct ContractsEventSelection {
     pub contract: String,
     pub data: EventDataSelection,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct GearMessageEnqueuedSelection {
     pub program: String,
     pub data: EventDataSelection,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct GearUserMessageSentSelection {
     pub program: String,
     pub data: EventDataSelection,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct AcalaEvmLog {
     pub contract: Option<String>,
     pub filter: Vec<Vec<String>>,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct AcalaEvmEventSelection {
     pub contract: String,
     pub logs: Vec<AcalaEvmLog>,

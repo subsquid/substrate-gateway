@@ -1,3 +1,4 @@
+use self::controller::BatchController;
 use super::{ArchiveService, BatchOptions};
 use crate::entities::{Batch, Metadata, Status};
 use crate::error::Error;
@@ -5,7 +6,10 @@ use crate::metrics::ObserverExt;
 use sqlx::{Pool, Postgres};
 
 mod batch;
+mod controller;
 mod fields;
+mod limit;
+mod partial;
 mod selection;
 mod serializer;
 mod utils;
@@ -17,6 +21,11 @@ pub enum DatabaseType {
     Cockroach,
 }
 
+pub struct BatchResponse {
+    pub data: Vec<Batch>,
+    pub next_block: Option<i32>,
+}
+
 pub struct PostgresArchive {
     pool: Pool<Postgres>,
     database_type: DatabaseType,
@@ -24,22 +33,15 @@ pub struct PostgresArchive {
 
 #[async_trait::async_trait]
 impl ArchiveService for PostgresArchive {
-    type Batch = Batch;
+    type Batch = BatchResponse;
     type BatchOptions = BatchOptions;
     type Metadata = Metadata;
     type Status = Status;
     type Error = Error;
 
-    async fn batch(&self, options: &BatchOptions) -> Result<Vec<Self::Batch>, Self::Error> {
-        if options.limit < 1 {
-            return Ok(vec![]);
-        } else {
-            let batch = options
-                .loader(self.pool.clone(), self.database_type.clone())
-                .load()
-                .await?;
-            Ok(batch)
-        }
+    async fn batch(&self, options: &BatchOptions) -> Result<BatchResponse, Self::Error> {
+        let controller = BatchController::new(self.pool.clone(), self.database_type.clone());
+        controller.load(options).await
     }
 
     async fn metadata(&self) -> Result<Vec<Self::Metadata>, Self::Error> {

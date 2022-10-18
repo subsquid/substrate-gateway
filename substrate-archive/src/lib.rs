@@ -1,4 +1,4 @@
-pub use options::BatchOptions;
+pub use options::{BatchOptions, Selections};
 pub use traits::*;
 
 pub mod entities;

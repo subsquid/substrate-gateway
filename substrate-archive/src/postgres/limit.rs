@@ -1,6 +1,8 @@
+// NOTE: this module is depricated and exists only for backword compatibility
+
 use super::serializer::{CallSerializer, EventSerializer, EvmLogSerializer, ExtrinsicSerializer};
 use super::utils::unify_and_merge;
-use super::DatabaseType;
+use super::{BatchOptions, BatchResponse, DatabaseType};
 use crate::entities::{Batch, BlockHeader, Call, Event, EvmLog, Extrinsic};
 use crate::error::Error;
 use crate::fields::{CallFields, EventFields, EvmLogFields, ExtrinsicFields};
@@ -10,15 +12,27 @@ use crate::selection::{
     EthTransactSelection, EventDataSelection, EventSelection, EvmLogSelection,
     GearMessageEnqueuedSelection, GearUserMessageSentSelection,
 };
-use crate::Selections;
 use sqlx::postgres::{PgArguments, Postgres};
 use sqlx::{Arguments, Pool};
-use std::collections::HashMap;
+use std::cmp::min;
+use std::collections::{HashMap, HashSet};
 
-#[derive(Clone)]
-pub struct BatchLoader {
+pub struct LimitBatchLoader<'a> {
     pool: Pool<Postgres>,
     database_type: DatabaseType,
+    limit: i32,
+    from_block: i32,
+    to_block: Option<i32>,
+    include_all_blocks: bool,
+    call_selections: &'a Vec<CallSelection>,
+    event_selections: &'a Vec<EventSelection>,
+    evm_log_selections: &'a Vec<EvmLogSelection>,
+    eth_transact_selections: &'a Vec<EthTransactSelection>,
+    contracts_event_selections: &'a Vec<ContractsEventSelection>,
+    gear_message_enqueued_selections: &'a Vec<GearMessageEnqueuedSelection>,
+    gear_user_message_sent_selections: &'a Vec<GearUserMessageSentSelection>,
+    acala_evm_executed_selections: &'a Vec<AcalaEvmEventSelection>,
+    acala_evm_executed_failed_selections: &'a Vec<AcalaEvmEventSelection>,
 }
 
 const EVENTS_BY_ID_QUERY: &str = "SELECT
@@ -34,62 +48,38 @@ const EVENTS_BY_ID_QUERY: &str = "SELECT
     FROM event
     WHERE id = ANY($1::char(23)[])";
 
-impl BatchLoader {
-    pub fn new(pool: Pool<Postgres>, database_type: DatabaseType) -> BatchLoader {
-        BatchLoader {
-            pool,
-            database_type,
+impl<'a> LimitBatchLoader<'a> {
+    pub async fn load(&self) -> Result<BatchResponse, Error> {
+        if self.limit < 1 {
+            return Ok(BatchResponse {
+                data: vec![],
+                next_block: None,
+            });
         }
-    }
 
-    pub async fn load(
-        &self,
-        from_block: i32,
-        to_block: i32,
-        include_all_blocks: bool,
-        selections: &Selections,
-    ) -> Result<Vec<Batch>, Error> {
-        let mut calls = self
-            .load_calls(from_block, to_block, &selections.call)
-            .await?;
-        let mut events = self
-            .load_events(from_block, to_block, &selections.event)
-            .await?;
-        let evm_logs = self
-            .load_evm_logs(from_block, to_block, &selections.evm_log)
-            .await?;
-        let mut eth_transactions = self
-            .load_eth_transactions(from_block, to_block, &selections.eth_transact)
-            .await?;
-        let mut contracts_events = self
-            .load_contracts_events(from_block, to_block, &selections.contracts_event)
-            .await?;
-        let mut messages_enqueued = self
-            .load_messages_enqueued(from_block, to_block, &selections.gear_message_enqueued)
-            .await?;
-        let mut messages_sent = self
-            .load_messages_sent(from_block, to_block, &selections.gear_user_message_sent)
-            .await?;
+        let mut calls = self.load_calls().await?;
+        let mut events = self.load_events().await?;
+        let mut evm_logs = self.load_evm_logs().await?;
+        let mut eth_transactions = self.load_eth_transactions().await?;
+        let mut contracts_events = self.load_contracts_events().await?;
+        let mut messages_enqueued = self.load_messages_enqueued().await?;
+        let mut messages_sent = self.load_messages_sent().await?;
         let mut acala_evm_executed = self
             .load_acala_evm_event(
-                from_block,
-                to_block,
-                &selections.acala_evm_executed,
+                self.acala_evm_executed_selections,
                 "acala_evm_executed",
                 "acala_evm_executed_log",
             )
             .await?;
         let mut acala_evm_failed = self
             .load_acala_evm_event(
-                from_block,
-                to_block,
-                &selections.acala_evm_executed_failed,
+                self.acala_evm_executed_failed_selections,
                 "acala_evm_executed_failed",
                 "acala_evm_executed_failed_log",
             )
             .await?;
-        let blocks = if include_all_blocks {
-            self.load_blocks(from_block, to_block).await?
+        let blocks = if self.include_all_blocks {
+            self.load_blocks().await?
         } else {
             let mut ids = vec![];
             calls
@@ -121,7 +111,17 @@ impl BatchLoader {
                 .for_each(|event| ids.push(event.block_id.clone()));
             ids.sort();
             ids.dedup();
+            ids.truncate(self.limit as usize);
 
+            calls.retain(|call| ids.contains(&call.block_id));
+            events.retain(|event| ids.contains(&event.block_id));
+            evm_logs.retain(|evm_log| ids.contains(&evm_log.block_id));
+            eth_transactions.retain(|call| ids.contains(&call.block_id));
+            contracts_events.retain(|event| ids.contains(&event.block_id));
+            messages_enqueued.retain(|event| ids.contains(&event.block_id));
+            messages_sent.retain(|event| ids.contains(&event.block_id));
+            acala_evm_executed.retain(|event| ids.contains(&event.block_id));
+            acala_evm_failed.retain(|event| ids.contains(&event.block_id));
             self.load_blocks_by_ids(&ids).await?
         };
 
@@ -141,7 +141,7 @@ impl BatchLoader {
         }
 
         for call in &eth_transactions {
-            for selection in &selections.eth_transact {
+            for selection in self.eth_transact_selections {
                 if selection.r#match(call) {
                     if let Some(fields) = call_fields.get_mut(&call.id) {
                         fields.call.merge(&selection.data.call);
@@ -164,7 +164,7 @@ impl BatchLoader {
             }
         }
         for call in &calls {
-            for selection in &selections.call {
+            for selection in self.call_selections {
                 if selection.r#match(call) {
                     if let Some(fields) = call_fields.get_mut(&call.id) {
                         fields.call.merge(&selection.data.call);
@@ -217,14 +217,14 @@ impl BatchLoader {
             }
         };
         for event in &events {
-            for selection in &selections.event {
+            for selection in self.event_selections {
                 if selection.r#match(event) {
                     process_event(event, &selection.data);
                 }
             }
         }
         for event in &messages_enqueued {
-            for selection in &selections.gear_message_enqueued {
+            for selection in self.gear_message_enqueued_selections {
                 if selection.r#match(event) {
                     process_event(event, &selection.data);
                 }
@@ -232,7 +232,7 @@ impl BatchLoader {
         }
         events.append(&mut messages_enqueued);
         for event in &messages_sent {
-            for selection in &selections.gear_user_message_sent {
+            for selection in self.gear_user_message_sent_selections {
                 if selection.r#match(event) {
                     process_event(event, &selection.data);
                 }
@@ -240,7 +240,7 @@ impl BatchLoader {
         }
         events.append(&mut messages_sent);
         for event in &acala_evm_executed {
-            for selection in &selections.acala_evm_executed {
+            for selection in self.acala_evm_executed_selections {
                 if selection.r#match(event) {
                     process_event(event, &selection.data);
                 }
@@ -248,7 +248,7 @@ impl BatchLoader {
         }
         events.append(&mut acala_evm_executed);
         for event in &acala_evm_failed {
-            for selection in &selections.acala_evm_executed_failed {
+            for selection in self.acala_evm_executed_failed_selections {
                 if selection.r#match(event) {
                     process_event(event, &selection.data);
                 }
@@ -256,7 +256,7 @@ impl BatchLoader {
         }
         events.append(&mut acala_evm_failed);
         for event in &contracts_events {
-            for selection in &selections.contracts_event {
+            for selection in self.contracts_event_selections {
                 if selection.r#match(event) {
                     process_event(event, &selection.data);
                 }
@@ -265,7 +265,7 @@ impl BatchLoader {
         events.append(&mut contracts_events);
 
         for log in &evm_logs {
-            for selection in &selections.evm_log {
+            for selection in self.evm_log_selections {
                 if selection.r#match(log) {
                     log_fields
                         .entry(log.id.clone())
@@ -401,46 +401,62 @@ impl BatchLoader {
             extrinsics_by_block,
             logs_by_block,
         );
-        Ok(batch)
+        Ok(BatchResponse {
+            data: batch,
+            next_block: None,
+        })
     }
 
-    async fn load_calls(
-        &self,
-        from_block: i32,
-        to_block: i32,
-        selections: &Vec<CallSelection>,
-    ) -> Result<Vec<Call>, Error> {
-        if selections.is_empty() {
+    async fn load_calls(&self) -> Result<Vec<Call>, Error> {
+        if self.call_selections.is_empty() {
             return Ok(Vec::new());
         }
-
-        let wildcard = selections.iter().any(|selection| selection.name == "*");
-        let names = selections
+        let wildcard = self
+            .call_selections
+            .iter()
+            .any(|selection| selection.name == "*");
+        let names = self
+            .call_selections
             .iter()
             .map(|selection| selection.name.clone())
             .collect::<Vec<String>>();
-        let from_block = format!("{:010}", from_block);
-        let to_block = format!("{:010}", to_block + 1);
 
-        let mut args = PgArguments::default();
-        let mut query = String::from(
-            "SELECT block_id
-            FROM call
-            WHERE block_id > $1 AND block_id < $2",
-        );
-        let mut args_len = 2;
-        args.add(&from_block);
-        args.add(&to_block);
-        if !wildcard {
+        let from_block = format!("{:010}", self.from_block);
+        let to_block = self
+            .to_block
+            .map(|to_block| format!("{:010}", to_block + 1));
+
+        let build_args = |_last_id: Option<String>, len: usize, limit: i64| {
+            let mut args = PgArguments::default();
+            let mut sql = String::from(
+                "SELECT block_id
+                FROM call
+                WHERE block_id > $1",
+            );
+            let mut args_len = 1;
+            args.add(&from_block);
+            if let Some(to_block) = &to_block {
+                args_len += 1;
+                args.add(to_block);
+                sql.push_str(&format!(" AND block_id < ${}", args_len));
+            }
+            if !wildcard {
+                args_len += 1;
+                args.add(&names);
+                sql.push_str(&format!(" AND name = ANY(${})", args_len));
+            }
+            sql.push_str(" ORDER BY block_id");
             args_len += 1;
-            args.add(&names);
-            query.push_str(&format!(" AND name = ANY(${})", args_len));
-        }
-        query.push_str(" ORDER BY block_id");
-        let ids = sqlx::query_scalar_with::<_, String, _>(&query, args)
-            .fetch_all(&self.pool)
-            .observe_duration("call")
-            .await?;
+            args.add(len as i64);
+            sql.push_str(&format!(" OFFSET ${}", args_len));
+            args_len += 1;
+            args.add(limit);
+            sql.push_str(&format!(" LIMIT ${}", args_len));
+
+            (sql, args)
+        };
+        let chunk_limit = 5000;
+        let ids = self.load_ids(build_args, "call", chunk_limit).await?;
 
         let mut query = String::from(
             "SELECT
@@ -554,50 +570,92 @@ impl BatchLoader {
         Ok(calls)
     }
 
-    async fn load_events(
-        &self,
-        from_block: i32,
-        to_block: i32,
-        selections: &Vec<EventSelection>,
-    ) -> Result<Vec<Event>, Error> {
-        if selections.is_empty() {
+    async fn load_events(&self) -> Result<Vec<Event>, Error> {
+        if self.event_selections.is_empty() {
             return Ok(Vec::new());
         }
-        let wildcard = selections.iter().any(|selection| selection.name == "*");
-        let names = selections
+        let wildcard = self
+            .event_selections
+            .iter()
+            .any(|selection| selection.name == "*");
+        let names = self
+            .event_selections
             .iter()
             .map(|selection| selection.name.clone())
             .collect::<Vec<String>>();
 
-        let from_block = format!("{:010}", from_block);
-        let to_block = format!("{:010}", to_block + 1);
-
-        let table = match self.database_type {
-            DatabaseType::Cockroach => "event@idx_event__name__block",
-            DatabaseType::Postgres => "event",
+        let mut ids = vec![];
+        let mut range_width = self.limit;
+        let mut total_range = 0;
+        let mut from_block = self.from_block;
+        let head = if let Some(to_block) = self.to_block {
+            to_block
+        } else {
+            let query = "SELECT height::int4 as head FROM block ORDER BY height DESC LIMIT 1";
+            let head = sqlx::query_scalar::<_, i32>(query)
+                .fetch_optional(&self.pool)
+                .observe_duration("block")
+                .await?;
+            if let Some(head) = head {
+                head
+            } else {
+                return Ok(vec![]);
+            }
         };
-        let mut query = format!(
-            "SELECT block_id
-            FROM {}
-            WHERE block_id > $1 AND block_id < $2",
-            table
-        );
-        let mut args = PgArguments::default();
-        let mut args_len = 2;
-        args.add(&from_block);
-        args.add(&to_block);
-        if !wildcard {
-            args_len += 1;
-            args.add(&names);
-            query.push_str(&format!(" AND name = ANY(${})", args_len));
-        }
-        query.push_str(" ORDER BY block_id");
 
-        let mut ids = sqlx::query_scalar_with::<_, String, _>(&query, args)
-            .fetch_all(&self.pool)
-            .observe_duration("event")
-            .await?;
-        ids.dedup();
+        'outer: loop {
+            let block_gt = format!("{:010}", from_block);
+            let to_block = min(from_block + range_width, head);
+            let block_lt = format!("{:010}", to_block + 1);
+
+            let table = match self.database_type {
+                DatabaseType::Cockroach => "event@idx_event__name__block",
+                DatabaseType::Postgres => "event",
+            };
+            let mut args = PgArguments::default();
+            let mut sql = format!(
+                "SELECT block_id
+                FROM {}
+                WHERE block_id > $1 AND block_id < $2",
+                table
+            );
+            let mut args_len = 2;
+            args.add(&block_gt);
+            args.add(&block_lt);
+            if !wildcard {
+                args_len += 1;
+                args.add(&names);
+                sql.push_str(&format!(" AND name = ANY(${})", args_len));
+            }
+            sql.push_str(" ORDER BY block_id");
+
+            let mut blocks = sqlx::query_scalar_with::<_, String, _>(&sql, args)
+                .fetch_all(&self.pool)
+                .observe_duration("event")
+                .await?;
+            blocks.dedup();
+            let len = i32::try_from(blocks.len()).unwrap();
+            total_range += range_width;
+
+            for block_id in blocks {
+                ids.push(block_id);
+                if ids.len() == self.limit as usize {
+                    break 'outer;
+                }
+            }
+
+            if to_block == head {
+                break;
+            }
+
+            range_width = if len == 0 {
+                min(range_width * 10, 100_000)
+            } else {
+                let total_blocks = i32::try_from(ids.len()).unwrap();
+                min((total_range / total_blocks) * (self.limit - len), 100_000)
+            };
+            from_block = to_block + 1;
+        }
 
         let mut query = String::from(
             "SELECT
@@ -626,33 +684,82 @@ impl BatchLoader {
         Ok(events)
     }
 
-    async fn load_messages_enqueued(
+    async fn load_ids(
         &self,
-        from_block: i32,
-        to_block: i32,
-        selections: &Vec<GearMessageEnqueuedSelection>,
-    ) -> Result<Vec<Event>, Error> {
-        if selections.is_empty() {
+        build_args: impl Fn(Option<String>, usize, i64) -> (String, PgArguments),
+        db_table: &'static str,
+        limit: i64,
+    ) -> Result<Vec<String>, Error> {
+        let mut ids = Vec::new();
+        let mut blocks = HashSet::new();
+        let mut last_id = None;
+
+        'outer: loop {
+            let (sql, args) = build_args(last_id, ids.len(), limit);
+            let result = sqlx::query_scalar_with::<_, String, _>(&sql, args)
+                .fetch_all(&self.pool)
+                .observe_duration(db_table)
+                .await?;
+            if result.is_empty() {
+                break;
+            } else {
+                for id in result {
+                    let block_id = id.split('-').next().unwrap().to_string();
+                    if blocks.len() == self.limit as usize && !blocks.contains(&block_id) {
+                        break 'outer;
+                    }
+                    blocks.insert(block_id);
+                    ids.push(id);
+                }
+                last_id = ids.last().cloned();
+            }
+        }
+        Ok(ids)
+    }
+
+    async fn load_messages_enqueued(&self) -> Result<Vec<Event>, Error> {
+        if self.gear_message_enqueued_selections.is_empty() {
             return Ok(Vec::new());
         }
-
-        let programs = selections
+        let id_gt = format!("{:010}", self.from_block);
+        let id_lt = self
+            .to_block
+            .map(|to_block| format!("{:010}", to_block + 1));
+        let programs = self
+            .gear_message_enqueued_selections
             .iter()
             .map(|selection| selection.program.clone())
             .collect::<Vec<String>>();
-        let from_block = format!("{:010}", from_block);
-        let to_block = format!("{:010}", to_block + 1);
 
-        let query = "SELECT event_id
-            FROM gear_message_enqueued
-            WHERE program = ANY($1) AND event_id > $2 AND event_id < $3
-            ORDER BY event_id";
-        let ids = sqlx::query_scalar::<_, String>(&query)
-            .bind(&programs)
-            .bind(&from_block)
-            .bind(&to_block)
-            .fetch_all(&self.pool)
-            .observe_duration("gear_message_enqueued")
+        let build_args = |last_id: Option<String>, _len: usize, limit: i64| {
+            let mut args = PgArguments::default();
+            let mut sql = String::from(
+                "SELECT event_id
+                FROM gear_message_enqueued
+                WHERE program = ANY($1) AND event_id > $2",
+            );
+            let mut args_len = 2;
+            args.add(&programs);
+            if let Some(last_id) = &last_id {
+                args.add(last_id);
+            } else {
+                args.add(&id_gt);
+            }
+            if let Some(id_lt) = &id_lt {
+                args_len += 1;
+                args.add(id_lt);
+                sql.push_str(&format!(" AND event_id < ${}", args_len));
+            }
+            sql.push_str(" ORDER BY event_id");
+            args_len += 1;
+            args.add(limit);
+            sql.push_str(&format!(" LIMIT ${}", args_len));
+
+            (sql, args)
+        };
+        let chunk_limit = 2000;
+        let ids = self
+            .load_ids(build_args, "gear_message_enqueued", chunk_limit)
             .await?;
 
         let events = sqlx::query_as::<_, Event>(EVENTS_BY_ID_QUERY)
@@ -663,33 +770,49 @@ impl BatchLoader {
         Ok(events)
     }
 
-    async fn load_messages_sent(
-        &self,
-        from_block: i32,
-        to_block: i32,
-        selections: &Vec<GearUserMessageSentSelection>,
-    ) -> Result<Vec<Event>, Error> {
-        if selections.is_empty() {
+    async fn load_messages_sent(&self) -> Result<Vec<Event>, Error> {
+        if self.gear_user_message_sent_selections.is_empty() {
             return Ok(Vec::new());
         }
-
-        let programs = selections
+        let id_gt = format!("{:010}", self.from_block);
+        let id_lt = self
+            .to_block
+            .map(|to_block| format!("{:010}", to_block + 1));
+        let programs = self
+            .gear_user_message_sent_selections
             .iter()
             .map(|selection| selection.program.clone())
             .collect::<Vec<String>>();
-        let from_block = format!("{:010}", from_block);
-        let to_block = format!("{:010}", to_block + 1);
 
-        let query = "SELECT event_id
-            FROM gear_user_message_sent
-            WHERE program = ANY($1) AND event_id > $2 AND event_id < $3
-            ORDER BY event_id";
-        let ids = sqlx::query_scalar::<_, String>(&query)
-            .bind(&programs)
-            .bind(&from_block)
-            .bind(&to_block)
-            .fetch_all(&self.pool)
-            .observe_duration("gear_user_message_sent")
+        let build_args = |last_id: Option<String>, _len: usize, limit: i64| {
+            let mut args = PgArguments::default();
+            let mut sql = String::from(
+                "SELECT event_id
+                FROM gear_user_message_sent
+                WHERE program = ANY($1) AND event_id > $2",
+            );
+            let mut args_len = 2;
+            args.add(&programs);
+            if let Some(last_id) = &last_id {
+                args.add(last_id);
+            } else {
+                args.add(&id_gt);
+            }
+            if let Some(id_lt) = &id_lt {
+                args_len += 1;
+                args.add(id_lt);
+                sql.push_str(&format!(" AND event_id < ${}", args_len));
+            }
+            sql.push_str(" ORDER BY event_id");
+            args_len += 1;
+            args.add(limit);
+            sql.push_str(&format!(" LIMIT ${}", args_len));
+
+            (sql, args)
+        };
+        let chunk_limit = 2000;
+        let ids = self
+            .load_ids(build_args, "gear_user_message_sent", chunk_limit)
             .await?;
 
         let events = sqlx::query_as::<_, Event>(EVENTS_BY_ID_QUERY)
@@ -716,81 +839,113 @@ impl BatchLoader {
 
     async fn query_acala_evm_event(
         &self,
-        from_block: i32,
-        to_block: i32,
         selection: &AcalaEvmEventSelection,
         event_table: &'static str,
     ) -> Result<Vec<String>, Error> {
-        let from_block = format!("{:010}", from_block);
-        let to_block = format!("{:010}", to_block + 1);
+        let id_gt = format!("{:010}", self.from_block);
+        let id_lt = self
+            .to_block
+            .map(|to_block| format!("{:010}", to_block + 1));
 
-        let query = format!(
-            "SELECT event_id
-            FROM {}
-            WHERE contract = $1 AND event_id > $2 AND event_id < $3
-            ORDER BY event_id",
-            event_table
-        );
-        let ids = sqlx::query_scalar::<_, String>(&query)
-            .bind(&selection.contract)
-            .bind(&from_block)
-            .bind(&to_block)
-            .fetch_all(&self.pool)
-            .observe_duration(event_table)
-            .await?;
-        Ok(ids)
+        let build_args = |last_id: Option<String>, _len: usize, limit: i64| {
+            let mut args = PgArguments::default();
+            let mut sql = format!(
+                "SELECT event_id
+                FROM {}
+                WHERE event_id > $1",
+                event_table
+            );
+            let mut args_len = 1;
+            if let Some(last_id) = &last_id {
+                args.add(last_id);
+            } else {
+                args.add(&id_gt);
+            }
+            if let Some(id_lt) = &id_lt {
+                args_len += 1;
+                args.add(id_lt);
+                sql.push_str(&format!(" AND event_id < ${}", args_len));
+            }
+            if selection.contract != "*" {
+                args_len += 1;
+                args.add(&selection.contract);
+                sql.push_str(&format!(" AND contract = ${}", args_len));
+            }
+            sql.push_str(" ORDER BY event_id");
+            args_len += 1;
+            args.add(limit);
+            sql.push_str(&format!(" LIMIT ${}", args_len));
+
+            (sql, args)
+        };
+        let chunk_limit = 2000;
+        self.load_ids(build_args, event_table, chunk_limit).await
     }
 
     async fn query_acala_evm_event_log(
         &self,
-        from_block: i32,
-        to_block: i32,
         selection: &AcalaEvmEventSelection,
         log_table: &'static str,
     ) -> Result<Vec<String>, Error> {
         let mut ids: Vec<String> = Vec::new();
 
         for log in &selection.logs {
-            let from_block = format!("{:010}", from_block);
-            let to_block = format!("{:010}", to_block + 1);
+            let id_gt = format!("{:010}", self.from_block);
+            let id_lt = self
+                .to_block
+                .map(|to_block| format!("{:010}", to_block + 1));
 
-            let mut args = PgArguments::default();
-            let mut query = format!(
-                "SELECT id from {}
-                WHERE id > $1 and id < $2",
-                log_table
-            );
-            let mut args_len = 2;
-            args.add(&from_block);
-            args.add(&to_block);
-            if selection.contract != "*" {
-                args_len += 1;
-                args.add(&selection.contract);
-                query.push_str(&format!(" AND event_contract = ${}", args_len));
-            }
-            if let Some(contract) = &log.contract {
-                args_len += 1;
-                args.add(contract);
-                query.push_str(&format!(" AND contract = ${}", args_len));
-            }
-            for idx in 0..=3 {
-                if let Some(topics) = log.filter.get(idx) {
-                    if !topics.is_empty() {
-                        args_len += 1;
-                        args.add(topics);
-                        query.push_str(&format!(" AND topic{} = ANY(${})", idx, args_len));
+            let build_args = |last_id: Option<String>, _len: usize, limit: i64| {
+                let mut args = PgArguments::default();
+                let mut sql = format!(
+                    "SELECT id
+                    FROM {}
+                    WHERE id > $1",
+                    log_table
+                );
+                let mut args_len = 1;
+                if let Some(last_id) = &last_id {
+                    args.add(last_id);
+                } else {
+                    args.add(&id_gt);
+                }
+                if let Some(id_lt) = &id_lt {
+                    args_len += 1;
+                    args.add(id_lt);
+                    sql.push_str(&format!(" AND id < ${}", args_len));
+                }
+                if selection.contract != "*" {
+                    args_len += 1;
+                    args.add(&selection.contract);
+                    sql.push_str(&format!(" AND event_contract = ${}", args_len));
+                }
+                if let Some(contract) = &log.contract {
+                    args_len += 1;
+                    args.add(contract);
+                    sql.push_str(&format!(" AND contract = ${}", args_len));
+                }
+                for idx in 0..=3 {
+                    if let Some(topics) = log.filter.get(idx) {
+                        if !topics.is_empty() {
+                            args_len += 1;
+                            args.add(topics);
+                            sql.push_str(&format!(" AND topic{} = ANY(${})", idx, args_len));
+                        }
                     }
                 }
-            }
-            query.push_str(" ORDER BY id");
-            let mut log_ids = sqlx::query_scalar_with::<_, String, _>(&query, args)
-                .fetch_all(&self.pool)
-                .observe_duration(log_table)
-                .await?;
+                sql.push_str(" ORDER BY id");
+                args_len += 1;
+                args.add(limit);
+                sql.push_str(&format!(" LIMIT ${}", args_len));
+
+                (sql, args)
+            };
+            let chunk_limit = 2000;
+            let mut log_ids = self.load_ids(build_args, log_table, chunk_limit).await?;
             ids.append(&mut log_ids);
         }
-        ids.sort();
-        ids.dedup();
+        self.trim_ids(&mut ids);
+
         let query = "SELECT event_id
             FROM acala_evm_executed_log
             WHERE id = ANY($1::char(23)[])";
@@ -804,8 +959,6 @@ impl BatchLoader {
 
     async fn load_acala_evm_event(
         &self,
-        from_block: i32,
-        to_block: i32,
         selections: &Vec<AcalaEvmEventSelection>,
         event_table: &'static str,
         log_table: &'static str,
@@ -816,16 +969,13 @@ impl BatchLoader {
         let mut ids = Vec::new();
         for selection in selections {
             let mut selection_ids = if self.is_acala_evm_logs_empty(&selection.logs) {
-                self.query_acala_evm_event(from_block, to_block, selection, event_table)
-                    .await?
+                self.query_acala_evm_event(selection, event_table).await?
             } else {
-                self.query_acala_evm_event_log(from_block, to_block, selection, log_table)
-                    .await?
+                self.query_acala_evm_event_log(selection, log_table).await?
             };
             ids.append(&mut selection_ids);
         }
-        ids.sort();
-        ids.dedup();
+        self.trim_ids(&mut ids);
         let events = sqlx::query_as::<_, Event>(EVENTS_BY_ID_QUERY)
             .bind(&ids)
             .fetch_all(&self.pool)
@@ -834,33 +984,49 @@ impl BatchLoader {
         Ok(events)
     }
 
-    async fn load_contracts_events(
-        &self,
-        from_block: i32,
-        to_block: i32,
-        selections: &Vec<ContractsEventSelection>,
-    ) -> Result<Vec<Event>, Error> {
-        if selections.is_empty() {
+    async fn load_contracts_events(&self) -> Result<Vec<Event>, Error> {
+        if self.contracts_event_selections.is_empty() {
             return Ok(Vec::new());
         }
-
-        let from_block = format!("{:010}", from_block);
-        let to_block = format!("{:010}", to_block + 1);
-        let contracts = selections
+        let id_gt = format!("{:010}", self.from_block);
+        let id_lt = self
+            .to_block
+            .map(|to_block| format!("{:010}", to_block + 1));
+        let contracts = self
+            .contracts_event_selections
             .iter()
             .map(|selection| selection.contract.clone())
             .collect::<Vec<String>>();
 
-        let query = "SELECT event_id
-            FROM contracts_contract_emitted
-            WHERE contract = ANY($1) and event_id > $2 and event_id < $3
-            ORDER BY event_id";
-        let ids = sqlx::query_scalar::<_, String>(query)
-            .bind(&contracts)
-            .bind(&from_block)
-            .bind(&to_block)
-            .fetch_all(&self.pool)
-            .observe_duration("contracts_contract_emitted")
+        let build_args = |last_id: Option<String>, _len: usize, limit: i64| {
+            let mut args = PgArguments::default();
+            let mut sql = String::from(
+                "SELECT event_id
+                FROM contracts_contract_emitted
+                WHERE contract = ANY($1) AND event_id > $2",
+            );
+            let mut args_len = 2;
+            args.add(&contracts);
+            if let Some(last_id) = &last_id {
+                args.add(last_id);
+            } else {
+                args.add(&id_gt);
+            }
+            if let Some(id_lt) = &id_lt {
+                args_len += 1;
+                args.add(id_lt);
+                sql.push_str(&format!(" AND event_id < ${}", args_len));
+            }
+            sql.push_str(" ORDER BY event_id");
+            args_len += 1;
+            args.add(limit);
+            sql.push_str(&format!(" LIMIT ${}", args_len));
+
+            (sql, args)
+        };
+        let chunk_limit = 2000;
+        let ids = self
+            .load_ids(build_args, "contracts_contract_emitted", chunk_limit)
             .await?;
 
         let events = sqlx::query_as::<_, Event>(EVENTS_BY_ID_QUERY)
@@ -871,7 +1037,7 @@ impl BatchLoader {
         Ok(events)
     }
 
-    fn group_evm_selections<'a>(
+    fn group_evm_selections(
         &'a self,
         selections: &'a Vec<EvmLogSelection>,
     ) -> Vec<Vec<&EvmLogSelection>> {
@@ -894,61 +1060,71 @@ impl BatchLoader {
         grouped
     }
 
-    async fn load_evm_logs(
-        &self,
-        from_block: i32,
-        to_block: i32,
-        selections: &Vec<EvmLogSelection>,
-    ) -> Result<Vec<EvmLog>, Error> {
-        if selections.is_empty() {
+    async fn load_evm_logs(&self) -> Result<Vec<EvmLog>, Error> {
+        if self.evm_log_selections.is_empty() {
             return Ok(Vec::new());
         }
-
         let mut ids = Vec::new();
-        for selections in self.group_evm_selections(selections) {
-            let from_block = format!("{:010}", from_block);
-            let to_block = format!("{:010}", to_block + 1);
+        for selections in self.group_evm_selections(&self.evm_log_selections) {
+            let id_gt = format!("{:010}", self.from_block);
+            let id_lt = self
+                .to_block
+                .map(|to_block| format!("{:010}", to_block + 1));
 
-            let mut args = PgArguments::default();
-            let mut query = String::from(
-                "SELECT event_id
-                FROM frontier_evm_log
-                WHERE event_id > $1 AND event_id < $2",
-            );
-            let mut args_len = 2;
-            args.add(&from_block);
-            args.add(&to_block);
-            let wildcard = selections.iter().any(|selection| selection.contract == "*");
-            let contracts: Vec<String> = selections
-                .iter()
-                .map(|selection| selection.contract.clone())
-                .collect();
-            if !wildcard {
-                args_len += 1;
-                args.add(&contracts);
-                query.push_str(&format!(" AND contract = ANY(${}::char(42)[])", args_len));
-            }
-            for index in 0..=3 {
-                if let Some(topics) = selections[0].filter.get(index) {
-                    if !topics.is_empty() {
-                        args_len += 1;
-                        args.add(topics);
-                        query.push_str(&format!(
-                            " AND topic{} = ANY(${}::char(66)[])",
-                            index, args_len
-                        ));
+            let build_args = |last_id: Option<String>, _len: usize, limit: i64| {
+                let mut args = PgArguments::default();
+                let mut sql = String::from(
+                    "SELECT event_id
+                    FROM frontier_evm_log
+                    WHERE event_id > $1",
+                );
+                let mut args_len = 1;
+                if let Some(last_id) = &last_id {
+                    args.add(last_id);
+                } else {
+                    args.add(&id_gt);
+                }
+                if let Some(id_lt) = &id_lt {
+                    args_len += 1;
+                    args.add(id_lt);
+                    sql.push_str(&format!(" AND event_id < ${}", args_len));
+                }
+                let wildcard = selections.iter().any(|selection| selection.contract == "*");
+                let contracts: Vec<String> = selections
+                    .iter()
+                    .map(|selection| selection.contract.clone())
+                    .collect();
+                if !wildcard {
+                    args_len += 1;
+                    args.add(&contracts);
+                    sql.push_str(&format!(" AND contract = ANY(${}::char(42)[])", args_len));
+                }
+                for index in 0..=3 {
+                    if let Some(topics) = selections[0].filter.get(index) {
+                        if !topics.is_empty() {
+                            args_len += 1;
+                            args.add(topics);
+                            sql.push_str(&format!(
+                                " AND topic{} = ANY(${}::char(66)[])",
+                                index, args_len
+                            ));
+                        }
                     }
                 }
-            }
-            query.push_str(" ORDER BY event_id");
-            let mut log_ids = sqlx::query_scalar_with::<_, String, _>(&query, args)
-                .fetch_all(&self.pool)
-                .observe_duration("frontier_evm_log")
+                sql.push_str(" ORDER BY event_id");
+                args_len += 1;
+                args.add(limit);
+                sql.push_str(&format!(" LIMIT ${}", args_len));
+
+                (sql, args)
+            };
+            let chunk_limit = 2000;
+            let mut log_ids = self
+                .load_ids(build_args, "frontier_evm_log", chunk_limit)
                 .await?;
             ids.append(&mut log_ids);
         }
-        ids.sort();
-        ids.dedup();
+        self.trim_ids(&mut ids);
         let query = "SELECT
                 event.id,
                 event.block_id,
@@ -976,49 +1152,59 @@ impl BatchLoader {
         Ok(logs)
     }
 
-    async fn load_eth_transactions(
-        &self,
-        from_block: i32,
-        to_block: i32,
-        selections: &Vec<EthTransactSelection>,
-    ) -> Result<Vec<Call>, Error> {
-        if selections.is_empty() {
+    async fn load_eth_transactions(&self) -> Result<Vec<Call>, Error> {
+        if self.eth_transact_selections.is_empty() {
             return Ok(Vec::new());
         }
         let mut ids = Vec::new();
-        for selection in selections {
-            let from_block = format!("{:010}", from_block);
-            let to_block = format!("{:010}", to_block + 1);
+        for selection in self.eth_transact_selections {
+            let id_gt = format!("{:010}", self.from_block);
+            let id_lt = self
+                .to_block
+                .map(|to_block| format!("{:010}", to_block + 1));
 
-            let mut args = PgArguments::default();
-            let mut query = String::from(
-                "SELECT call_id
-                FROM frontier_ethereum_transaction
-                WHERE call_id > $1 AND call_id < $2",
-            );
-            let mut args_len = 2;
-            args.add(&from_block);
-            args.add(&to_block);
-            if selection.contract != "*" {
+            let build_args = |last_id: Option<String>, _len: usize, limit: i64| {
+                let mut args = PgArguments::default();
+                let mut sql = String::from(
+                    "SELECT call_id
+                    FROM frontier_ethereum_transaction
+                    WHERE call_id > $1",
+                );
+                let mut args_len = 1;
+                if let Some(last_id) = &last_id {
+                    args.add(last_id);
+                } else {
+                    args.add(&id_gt);
+                }
+                if let Some(id_lt) = &id_lt {
+                    args_len += 1;
+                    args.add(id_lt);
+                    sql.push_str(&format!(" AND call_id < ${}", args_len));
+                }
+                if selection.contract != "*" {
+                    args_len += 1;
+                    args.add(&selection.contract);
+                    sql.push_str(&format!(" AND contract = ${}", args_len));
+                }
+                if let Some(sighash) = &selection.sighash {
+                    args_len += 1;
+                    args.add(sighash);
+                    sql.push_str(&format!(" AND sighash = ${}", args_len));
+                }
+                sql.push_str(" ORDER BY call_id");
                 args_len += 1;
-                args.add(&selection.contract);
-                query.push_str(&format!(" AND contract = ${}", args_len));
-            }
-            if let Some(sighash) = &selection.sighash {
-                args_len += 1;
-                args.add(sighash);
-                query.push_str(&format!(" AND sighash = ${}", args_len));
-            }
-            query.push_str(" ORDER BY call_id");
+                args.add(limit);
+                sql.push_str(&format!(" LIMIT ${}", args_len));
 
-            let mut selection_ids = sqlx::query_scalar_with::<_, String, _>(&query, args)
-                .fetch_all(&self.pool)
-                .observe_duration("frontier_ethereum_transaction")
+                (sql, args)
+            };
+            let chunk_limit = 2000;
+            let mut selection_ids = self
+                .load_ids(build_args, "frontier_ethereum_transaction", chunk_limit)
                 .await?;
             ids.append(&mut selection_ids);
         }
-        ids.sort();
-        ids.dedup();
+        self.trim_ids(&mut ids);
         let query = "SELECT
                 id,
                 parent_id,
@@ -1076,29 +1262,6 @@ impl BatchLoader {
         Ok(calls)
     }
 
-    async fn load_blocks(&self, from_block: i32, to_block: i32) -> Result<Vec<BlockHeader>, Error> {
-        let query = "SELECT
-                id,
-                height::int8,
-                hash,
-                parent_hash,
-                state_root,
-                extrinsics_root,
-                timestamp,
-                spec_id,
-                validator
-            FROM block
-            WHERE height >= $1 AND height <= $2
-            ORDER BY height";
-        let blocks = sqlx::query_as::<_, BlockHeader>(&query)
-            .bind(from_block)
-            .bind(to_block)
-            .fetch_all(&self.pool)
-            .observe_duration("block")
-            .await?;
-        Ok(blocks)
-    }
-
     async fn load_blocks_by_ids(&self, ids: &Vec<String>) -> Result<Vec<BlockHeader>, Error> {
         let query = "SELECT
                 id,
@@ -1114,6 +1277,31 @@ impl BatchLoader {
             WHERE id = ANY($1::char(16)[])";
         let blocks = sqlx::query_as::<_, BlockHeader>(query)
             .bind(ids)
+            .fetch_all(&self.pool)
+            .observe_duration("block")
+            .await?;
+        Ok(blocks)
+    }
+
+    async fn load_blocks(&self) -> Result<Vec<BlockHeader>, Error> {
+        let query = "SELECT
+                id,
+                height::int8,
+                hash,
+                parent_hash,
+                state_root,
+                extrinsics_root,
+                timestamp,
+                spec_id,
+                validator
+            FROM block
+            WHERE height >= $1 AND ($2 IS null OR height <= $2)
+            ORDER BY height
+            LIMIT $3";
+        let blocks = sqlx::query_as::<_, BlockHeader>(&query)
+            .bind(self.from_block)
+            .bind(self.to_block)
+            .bind(self.limit)
             .fetch_all(&self.pool)
             .observe_duration("block")
             .await?;
@@ -1208,6 +1396,47 @@ impl BatchLoader {
                     call_fields.insert(parent.id.clone(), parent_fields);
                 }
             }
+        }
+    }
+
+    fn trim_ids(&self, ids: &mut Vec<String>) {
+        ids.sort();
+        ids.dedup();
+        let mut blocks = HashSet::new();
+        ids.retain(|id| {
+            let block_id = id.split('-').next().unwrap().to_string();
+            if blocks.len() == self.limit as usize && !blocks.contains(&block_id) {
+                false
+            } else {
+                blocks.insert(block_id);
+                true
+            }
+        });
+    }
+}
+
+impl BatchOptions {
+    pub(super) fn loader(
+        &self,
+        pool: Pool<Postgres>,
+        database_type: DatabaseType,
+    ) -> LimitBatchLoader {
+        LimitBatchLoader {
+            pool,
+            database_type,
+            limit: self.limit.unwrap(),
+            from_block: self.from_block,
+            to_block: self.to_block,
+            include_all_blocks: self.include_all_blocks,
+            call_selections: &self.selections.call,
+            event_selections: &self.selections.event,
+            evm_log_selections: &self.selections.evm_log,
+            eth_transact_selections: &self.selections.eth_transact,
+            contracts_event_selections: &self.selections.contracts_event,
+            gear_message_enqueued_selections: &self.selections.gear_message_enqueued,
+            gear_user_message_sent_selections: &self.selections.gear_user_message_sent,
+            acala_evm_executed_selections: &self.selections.acala_evm_executed,
+            acala_evm_executed_failed_selections: &self.selections.acala_evm_executed_failed,
         }
     }
 }

@@ -60,14 +60,17 @@ async fn graphql_request(
     }
     let lock = next_block.lock().unwrap();
     if let Some(next_block) = lock.0 {
-        let data = response.data.into_json().unwrap();
+        let mut value = response.data.into_json().unwrap();
+        let data = value.as_object_mut().unwrap();
         let batch = data.get("batch").unwrap();
-        response.data = serde_json::json!({
-            "data": batch,
-            "nextBlock": next_block
-        })
-        .try_into()
-        .unwrap();
+        data.insert(
+            "batch".to_string(),
+            serde_json::json!({
+                "data": batch,
+                "nextBlock": next_block
+            }),
+        );
+        response.data = serde_json::to_value(data).unwrap().try_into().unwrap();
     }
     response.into()
 }

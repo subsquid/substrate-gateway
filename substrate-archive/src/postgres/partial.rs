@@ -23,7 +23,7 @@ impl PartialBatchLoader {
         let mut batch = vec![];
 
         let start_time = std::time::Instant::now();
-        let timeout = std::time::Duration::from_secs(5);
+        let timeout = std::time::Duration::from_secs(2);
 
         let mut from_block = options.from_block;
         let mut range_width = 100;

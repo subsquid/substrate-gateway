@@ -909,20 +909,37 @@ impl BatchLoader {
             let from_block = format!("{:010}", from_block);
             let to_block = format!("{:010}", to_block + 1);
 
-            let mut args = PgArguments::default();
-            let mut query = String::from(
-                "SELECT event_id
-                FROM frontier_evm_log
-                WHERE event_id > $1 AND event_id < $2",
-            );
-            let mut args_len = 2;
-            args.add(&from_block);
-            args.add(&to_block);
             let wildcard = selections.iter().any(|selection| selection.contract == "*");
             let contracts: Vec<String> = selections
                 .iter()
                 .map(|selection| selection.contract.clone())
                 .collect();
+
+            let table = match self.database_type {
+                DatabaseType::Cockroach => {
+                    let has_topics = if let Some(topics) = selections[0].filter.get(0) {
+                        !topics.is_empty()
+                    } else {
+                        false
+                    };
+                    if !wildcard && has_topics {
+                        "frontier_evm_log@idx_evm_log__contract__topic0__event"
+                    } else {
+                        "frontier_evm_log"
+                    }
+                },
+                DatabaseType::Postgres => "frontier_evm_log",
+            };
+            let mut args = PgArguments::default();
+            let mut query = format!(
+                "SELECT event_id
+                FROM {}
+                WHERE event_id > $1 AND event_id < $2",
+                table
+            );
+            let mut args_len = 2;
+            args.add(&from_block);
+            args.add(&to_block);
             if !wildcard {
                 args_len += 1;
                 args.add(&contracts);

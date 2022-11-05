@@ -1,6 +1,7 @@
 use super::{batch::BatchLoader, BatchResponse};
 use crate::error::Error;
 use crate::Selections;
+use std::time::{Instant, Duration};
 use std::cmp::{max, min};
 
 pub struct PartialOptions {
@@ -22,8 +23,8 @@ impl PartialBatchLoader {
     pub async fn load(&self, options: &PartialOptions) -> Result<BatchResponse, Error> {
         let mut batch = vec![];
 
-        let start_time = std::time::Instant::now();
-        let timeout = std::time::Duration::from_secs(2);
+        let start_time = Instant::now();
+        let timeout = Duration::from_secs(2);
 
         let mut from_block = options.from_block;
         let mut range_width = 100;

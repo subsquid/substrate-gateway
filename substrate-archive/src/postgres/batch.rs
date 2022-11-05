@@ -422,26 +422,6 @@ impl BatchLoader {
         let from_block = format!("{:010}", from_block);
         let to_block = format!("{:010}", to_block + 1);
 
-        let mut args = PgArguments::default();
-        let mut query = String::from(
-            "SELECT block_id
-            FROM call
-            WHERE block_id > $1 AND block_id < $2",
-        );
-        let mut args_len = 2;
-        args.add(&from_block);
-        args.add(&to_block);
-        if !wildcard {
-            args_len += 1;
-            args.add(&names);
-            query.push_str(&format!(" AND name = ANY(${})", args_len));
-        }
-        query.push_str(" ORDER BY block_id");
-        let ids = sqlx::query_scalar_with::<_, String, _>(&query, args)
-            .fetch_all(&self.pool)
-            .observe_duration("call")
-            .await?;
-
         let mut query = String::from(
             "SELECT
                 id,
@@ -454,12 +434,13 @@ impl BatchLoader {
                 error,
                 origin,
                 pos::int8
-            FROM call WHERE block_id = ANY($1::char(16)[])",
+            FROM call WHERE block_id > $1 AND block_id < $2",
         );
         let mut args = PgArguments::default();
-        args.add(&ids);
+        args.add(&from_block);
+        args.add(&to_block);
         if !wildcard {
-            query.push_str(&format!(" AND name = ANY($2)"));
+            query.push_str(&format!(" AND name = ANY($3)"));
             args.add(&names)
         }
         let mut calls = sqlx::query_as_with::<_, Call, _>(&query, args)
@@ -572,33 +553,6 @@ impl BatchLoader {
         let from_block = format!("{:010}", from_block);
         let to_block = format!("{:010}", to_block + 1);
 
-        let table = match self.database_type {
-            DatabaseType::Cockroach => "event@idx_event__name__block",
-            DatabaseType::Postgres => "event",
-        };
-        let mut query = format!(
-            "SELECT block_id
-            FROM {}
-            WHERE block_id > $1 AND block_id < $2",
-            table
-        );
-        let mut args = PgArguments::default();
-        let mut args_len = 2;
-        args.add(&from_block);
-        args.add(&to_block);
-        if !wildcard {
-            args_len += 1;
-            args.add(&names);
-            query.push_str(&format!(" AND name = ANY(${})", args_len));
-        }
-        query.push_str(" ORDER BY block_id");
-
-        let mut ids = sqlx::query_scalar_with::<_, String, _>(&query, args)
-            .fetch_all(&self.pool)
-            .observe_duration("event")
-            .await?;
-        ids.dedup();
-
         let mut query = String::from(
             "SELECT
                 id,
@@ -611,12 +565,13 @@ impl BatchLoader {
                 args,
                 pos::int8
             FROM event
-            WHERE block_id = ANY($1::char(16)[])",
+            WHERE block_id > $1 AND block_id < $2",
         );
         let mut args = PgArguments::default();
-        args.add(&ids);
+        args.add(&from_block);
+        args.add(&to_block);
         if !wildcard {
-            query.push_str(&format!(" AND name = ANY($2)"));
+            query.push_str(&format!(" AND name = ANY($3)"));
             args.add(&names)
         }
         let events = sqlx::query_as_with::<_, Event, _>(&query, args)

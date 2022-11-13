@@ -931,20 +931,45 @@ impl BatchLoader {
                 event.name,
                 event.args,
                 event.pos::int8,
-                COALESCE(
-                    jsonb_extract_path_text(executed_event.args, '2'),
-                    jsonb_extract_path_text(executed_event.args, 'transactionHash')
-                ) AS evm_tx_hash
+                '' AS evm_tx_hash
             FROM event
-            JOIN event executed_event
-                ON event.extrinsic_id = executed_event.extrinsic_id
-                    AND executed_event.name = 'Ethereum.Executed'
             WHERE event.id = ANY($1::char(23)[])";
-        let logs = sqlx::query_as::<_, EvmLog>(query)
+        let mut logs = sqlx::query_as::<_, EvmLog>(query)
             .bind(&ids)
             .fetch_all(&self.pool)
             .observe_duration("event")
             .await?;
+
+        let mut extrinsics = logs.iter()
+            .filter_map(|log| log.extrinsic_id.clone())
+            .collect::<Vec<String>>();
+        extrinsics.sort();
+        extrinsics.dedup();
+        let query = "SELECT
+                extrinsic_id,
+                COALESCE(
+                    jsonb_extract_path_text(args, '2'),
+                    jsonb_extract_path_text(args, 'transactionHash')
+                ) AS evm_tx_hash
+            FROM event
+            WHERE name = 'Ethereum.Executed' AND extrinsic_id = ANY($1::char(23)[])";
+        let tx_hashes = sqlx::query_as::<_, (String, String)>(query)
+            .bind(&extrinsics)
+            .fetch_all(&self.pool)
+            .await?;
+        let mut hash_by_extrinsic: HashMap<String, String> = HashMap::new();
+        for (extrinsic_id, hash) in tx_hashes {
+            hash_by_extrinsic.insert(extrinsic_id, hash);
+        }
+
+        for log in &mut logs {
+            if let Some(extrinsic_id) = &log.extrinsic_id {
+                if let Some(hash) = hash_by_extrinsic.get(extrinsic_id) {
+                    log.evm_tx_hash = hash.clone();
+                }
+            }
+        }
+
         Ok(logs)
     }
 

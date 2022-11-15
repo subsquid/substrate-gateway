@@ -38,6 +38,7 @@ impl PartialBatchLoader {
         let mut total_range = 0;
 
         loop {
+            dbg!(from_block, to_block);
             let mut range_batch = self
                 .loader
                 .load(
@@ -50,6 +51,7 @@ impl PartialBatchLoader {
             let len = i32::try_from(range_batch.len()).unwrap();
             total_range += range_width;
             size += size_of_batch(&range_batch);
+            dbg!(size);
             batch.append(&mut range_batch);
 
             if size > 1024 * 1024 {
@@ -65,12 +67,12 @@ impl PartialBatchLoader {
             }
 
             range_width = if len == 0 {
-                min(range_width * 10, 100_000)
+                min(range_width * 10, 50_000)
             } else {
                 let total_blocks = i32::try_from(batch.len()).unwrap();
                 min(
                     max((total_range / total_blocks) * (50 - len), 100),
-                    100_000,
+                    50_000,
                 )
             };
 

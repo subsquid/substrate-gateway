@@ -67,12 +67,12 @@ impl PartialBatchLoader {
             }
 
             range_width = if len == 0 {
-                min(range_width * 10, 50_000)
+                min(range_width * 10, 10_000)
             } else {
                 let total_blocks = i32::try_from(batch.len()).unwrap();
                 min(
                     max((total_range / total_blocks) * (50 - len), 100),
-                    50_000,
+                    10_000,
                 )
             };
 

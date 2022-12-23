@@ -12,6 +12,8 @@ mod server;
 pub struct SubstrateGateway {
     pool: Pool<Postgres>,
     database_type: DatabaseType,
+    scan_start_value: u16,
+    scan_max_value: u32,
     evm_support: bool,
     acala_support: bool,
     contracts_support: bool,
@@ -19,10 +21,17 @@ pub struct SubstrateGateway {
 }
 
 impl SubstrateGateway {
-    pub fn new(pool: Pool<Postgres>, database_type: DatabaseType) -> Self {
+    pub fn new(
+        pool: Pool<Postgres>,
+        database_type: DatabaseType,
+        scan_start_value: u16,
+        scan_max_value: u32,
+    ) -> Self {
         SubstrateGateway {
             pool,
             database_type,
+            scan_start_value,
+            scan_max_value,
             evm_support: false,
             acala_support: false,
             contracts_support: false,
@@ -54,6 +63,8 @@ impl SubstrateGateway {
         let archive = Box::new(PostgresArchive::new(
             self.pool.clone(),
             self.database_type.clone(),
+            self.scan_start_value,
+            self.scan_max_value,
         ));
         let query = QueryRoot { archive };
         let schema = Schema::build(query, EmptyMutation, EmptySubscription)

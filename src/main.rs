@@ -26,6 +26,14 @@ struct Args {
     #[clap(long, value_enum, default_value_t = DatabaseType::Postgres)]
     database_type: DatabaseType,
 
+    /// Number of blocks to start scanning a database
+    #[clap(long, default_value_t = 100)]
+    scan_start_value: u16,
+
+    /// Query engine will be upper limited by this amount of blocks
+    #[clap(long, default_value_t = 100_000)]
+    scan_max_value: u32,
+
     /// EVM pallet support
     #[clap(long)]
     evm_support: bool,
@@ -65,11 +73,16 @@ async fn main() -> std::io::Result<()> {
         })
         .connect_lazy(&args.database_url)
         .unwrap();
-    SubstrateGateway::new(pool, args.database_type)
-        .evm_support(args.evm_support)
-        .contracts_support(args.contracts_support)
-        .gear_support(args.gear_support)
-        .acala_support(args.acala_support)
-        .run()
-        .await
+    SubstrateGateway::new(
+        pool,
+        args.database_type,
+        args.scan_start_value,
+        args.scan_max_value,
+    )
+    .evm_support(args.evm_support)
+    .contracts_support(args.contracts_support)
+    .gear_support(args.gear_support)
+    .acala_support(args.acala_support)
+    .run()
+    .await
 }

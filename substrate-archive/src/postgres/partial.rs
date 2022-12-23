@@ -18,11 +18,17 @@ pub struct PartialOptions {
 
 pub struct PartialBatchLoader {
     loader: BatchLoader,
+    scan_start_value: u16,
+    scan_max_value: u32,
 }
 
 impl PartialBatchLoader {
-    pub fn new(loader: BatchLoader) -> PartialBatchLoader {
-        PartialBatchLoader { loader }
+    pub fn new(loader: BatchLoader, scan_start_value: u16, scan_max_value: u32) -> PartialBatchLoader {
+        PartialBatchLoader {
+            loader,
+            scan_start_value,
+            scan_max_value,
+        }
     }
 
     pub async fn load(&self, options: &PartialOptions) -> Result<BatchResponse, Error> {
@@ -30,10 +36,12 @@ impl PartialBatchLoader {
 
         let start_time = Instant::now();
         let timeout = Duration::from_secs(5);
+        let scan_start_value: i32 = self.scan_start_value.into();
+        let scan_max_value: i32 = self.scan_max_value.try_into().unwrap();
         let mut size = 0;
 
         let mut from_block = options.from_block;
-        let mut range_width = 100;
+        let mut range_width = scan_start_value;
         let mut to_block = min(from_block + range_width - 1, options.to_block);
         let mut total_range = 0;
 
@@ -65,12 +73,12 @@ impl PartialBatchLoader {
             }
 
             range_width = if len == 0 {
-                min(range_width * 10, 10_000)
+                min(range_width * 10, scan_max_value)
             } else {
                 let total_blocks = i32::try_from(batch.len()).unwrap();
                 min(
-                    max((total_range / total_blocks) * (50 - len), 100),
-                    10_000,
+                    max((total_range / total_blocks) * (scan_start_value - len), scan_start_value),
+                    scan_max_value,
                 )
             };
 

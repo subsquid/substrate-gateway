@@ -9,13 +9,22 @@ use sqlx::{Pool, Postgres};
 pub struct BatchController {
     pool: Pool<Postgres>,
     database_type: DatabaseType,
+    scan_start_value: u16,
+    scan_max_value: u32,
 }
 
 impl BatchController {
-    pub fn new(pool: Pool<Postgres>, database_type: DatabaseType) -> BatchController {
+    pub fn new(
+        pool: Pool<Postgres>,
+        database_type: DatabaseType,
+        scan_start_value: u16,
+        scan_max_value: u32,
+    ) -> BatchController {
         BatchController {
             pool,
             database_type,
+            scan_start_value,
+            scan_max_value,
         }
     }
 
@@ -54,7 +63,7 @@ impl BatchController {
             }
             None => {
                 let loader = BatchLoader::new(self.pool.clone(), self.database_type.clone());
-                let strategy = PartialBatchLoader::new(loader);
+                let strategy = PartialBatchLoader::new(loader, self.scan_start_value, self.scan_max_value);
                 let options = PartialOptions {
                     from_block: options.from_block,
                     to_block,

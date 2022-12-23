@@ -29,6 +29,8 @@ pub struct BatchResponse {
 pub struct PostgresArchive {
     pool: Pool<Postgres>,
     database_type: DatabaseType,
+    scan_start_value: u16,
+    scan_max_value: u32,
 }
 
 #[async_trait::async_trait]
@@ -40,7 +42,10 @@ impl ArchiveService for PostgresArchive {
     type Error = Error;
 
     async fn batch(&self, options: &BatchOptions) -> Result<BatchResponse, Self::Error> {
-        let controller = BatchController::new(self.pool.clone(), self.database_type.clone());
+        let controller = BatchController::new(
+            self.pool.clone(), self.database_type.clone(),
+            self.scan_start_value, self.scan_max_value
+        );
         controller.load(options).await
     }
 
@@ -77,10 +82,17 @@ impl ArchiveService for PostgresArchive {
 }
 
 impl PostgresArchive {
-    pub fn new(pool: Pool<Postgres>, database_type: DatabaseType) -> PostgresArchive {
+    pub fn new(
+        pool: Pool<Postgres>,
+        database_type: DatabaseType,
+        scan_start_value: u16,
+        scan_max_value: u32
+    ) -> PostgresArchive {
         PostgresArchive {
             pool,
             database_type,
+            scan_start_value,
+            scan_max_value,
         }
     }
 }

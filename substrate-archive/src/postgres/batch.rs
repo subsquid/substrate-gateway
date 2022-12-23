@@ -801,19 +801,24 @@ impl BatchLoader {
 
         let from_block = format!("{:010}", from_block);
         let to_block = format!("{:010}", to_block + 1);
+        let wildcard = selections.iter().any(|selection| selection.contract == "*");
         let contracts = selections
             .iter()
             .map(|selection| selection.contract.clone())
             .collect::<Vec<String>>();
 
-        let query = "SELECT event_id
+        let mut query = "SELECT event_id
             FROM contracts_contract_emitted
-            WHERE contract = ANY($1) and event_id > $2 and event_id < $3
-            ORDER BY event_id";
-        let ids = sqlx::query_scalar::<_, String>(query)
-            .bind(&contracts)
-            .bind(&from_block)
-            .bind(&to_block)
+            WHERE event_id > $1 AND event_id < $2".to_string();
+        let mut args = PgArguments::default();
+        args.add(&from_block);
+        args.add(&to_block);
+        if !wildcard {
+            args.add(&contracts);
+            query.push_str(" AND contract = ANY($3)");
+        }
+        query.push_str(" ORDER BY event_id");
+        let ids = sqlx::query_scalar_with::<_, String, _>(&query, args)
             .fetch_all(&self.pool)
             .observe_duration("contracts_contract_emitted")
             .await?;

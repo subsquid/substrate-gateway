@@ -149,7 +149,7 @@ impl ContractsEventSelection {
         if let Some(value) = &event.args {
             if let Some(value) = value.get("contract") {
                 if let Some(contract) = value.as_str() {
-                    return contract == self.contract;
+                    return self.contract == WILDCARD || contract == self.contract;
                 }
             }
         }

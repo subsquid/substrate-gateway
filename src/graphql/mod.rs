@@ -4,9 +4,8 @@ use inputs::{
     EthTransactSelectionInput, EventSelectionInput, EvmLogSelectionInput,
     GearMessageEnqueuedSelectionInput, GearUserMessageSentSelectionInput,
 };
-use objects::{BatchObject, MetadataObject, StatusObject};
 use std::sync::{Arc, Mutex};
-use substrate_archive::entities::{Metadata, Status};
+use substrate_archive::entities::{Batch, Metadata, Status};
 use substrate_archive::error::Error;
 use substrate_archive::postgres::BatchResponse;
 use substrate_archive::selection::{
@@ -16,7 +15,6 @@ use substrate_archive::selection::{
 use substrate_archive::{ArchiveService, BatchOptions, Selections};
 
 mod inputs;
-mod objects;
 
 pub struct EvmSupport(pub bool);
 
@@ -84,7 +82,7 @@ impl QueryRoot {
         #[graphql(name = "events")] event_selections: Option<Vec<EventSelectionInput>>,
         #[graphql(name = "calls")] call_selections: Option<Vec<CallSelectionInput>>,
         include_all_blocks: Option<bool>,
-    ) -> Result<Vec<BatchObject>> {
+    ) -> Result<Vec<Batch>> {
         let next_block = ctx.data_unchecked::<Arc<Mutex<NextBlock>>>();
         let selections = Selections {
             call: self.unwrap_selections::<CallSelectionInput, CallSelection>(call_selections),
@@ -109,32 +107,21 @@ impl QueryRoot {
             let mut next_block = next_block.lock().unwrap();
             next_block.0 = Some(next);
         }
-        let batch = resp.data.into_iter().map(|batch| batch.into()).collect();
-        Ok(batch)
+        Ok(resp.data)
     }
 
-    async fn metadata(&self) -> Result<Vec<MetadataObject>> {
-        let metadata = self
-            .archive
-            .metadata()
-            .await?
-            .into_iter()
-            .map(|metadata| metadata.into())
-            .collect();
+    async fn metadata(&self) -> Result<Vec<Metadata>> {
+        let metadata = self.archive.metadata().await?;
         Ok(metadata)
     }
 
-    async fn metadata_by_id(&self, id: String) -> Result<Option<MetadataObject>> {
-        let metadata = self
-            .archive
-            .metadata_by_id(id)
-            .await?
-            .map(|metadata| metadata.into());
+    async fn metadata_by_id(&self, id: String) -> Result<Option<Metadata>> {
+        let metadata = self.archive.metadata_by_id(id).await?;
         Ok(metadata)
     }
 
-    async fn status(&self) -> Result<StatusObject> {
-        let status = self.archive.status().await?.into();
+    async fn status(&self) -> Result<Status> {
+        let status = self.archive.status().await?;
         Ok(status)
     }
 }

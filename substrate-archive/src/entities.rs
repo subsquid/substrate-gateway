@@ -1,8 +1,9 @@
+use async_graphql::SimpleObject;
 use chrono::{DateTime, Utc};
 use rust_decimal::Decimal;
 use sqlx::FromRow;
 
-#[derive(FromRow, Debug)]
+#[derive(FromRow, Debug, SimpleObject)]
 pub struct BlockHeader {
     pub id: String,
     pub height: i64,
@@ -15,7 +16,7 @@ pub struct BlockHeader {
     pub validator: Option<String>,
 }
 
-#[derive(sqlx::FromRow, Debug)]
+#[derive(FromRow, Debug)]
 pub struct Event {
     pub id: String,
     pub block_id: String,
@@ -28,7 +29,7 @@ pub struct Event {
     pub pos: i64,
 }
 
-#[derive(sqlx::FromRow, Debug)]
+#[derive(FromRow, Debug)]
 pub struct EvmLog {
     pub id: String,
     pub block_id: String,
@@ -42,7 +43,7 @@ pub struct EvmLog {
     pub evm_tx_hash: String,
 }
 
-#[derive(sqlx::FromRow, Debug)]
+#[derive(FromRow, Debug)]
 pub struct Call {
     pub id: String,
     pub parent_id: Option<String>,
@@ -56,7 +57,7 @@ pub struct Call {
     pub pos: i64,
 }
 
-#[derive(sqlx::FromRow)]
+#[derive(FromRow)]
 pub struct Extrinsic {
     pub id: String,
     pub block_id: String,
@@ -72,7 +73,7 @@ pub struct Extrinsic {
     pub hash: String,
 }
 
-#[derive(Debug)]
+#[derive(Debug, SimpleObject)]
 pub struct Batch {
     pub header: BlockHeader,
     pub extrinsics: Vec<serde_json::Value>,
@@ -80,7 +81,7 @@ pub struct Batch {
     pub events: Vec<serde_json::Value>,
 }
 
-#[derive(FromRow, Debug)]
+#[derive(FromRow, Debug, SimpleObject)]
 pub struct Metadata {
     pub id: String,
     pub spec_name: String,
@@ -90,7 +91,7 @@ pub struct Metadata {
     pub hex: String,
 }
 
-#[derive(FromRow, Debug)]
+#[derive(FromRow, Debug, SimpleObject)]
 pub struct Status {
     pub head: i64,
 }

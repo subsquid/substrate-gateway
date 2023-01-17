@@ -4,6 +4,7 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
+async-graphql = { version = "4.0.3", features = [ "chrono" ] }
 async-trait = "0.1.52"
 sqlx = { version = "0.6.2", features = [ "runtime-actix-rustls", "postgres", "macros", "chrono", "json", "decimal" ] }
 rust_decimal = "1.25.0"

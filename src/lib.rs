@@ -21,17 +21,12 @@ pub struct SubstrateGateway {
 }
 
 impl SubstrateGateway {
-    pub fn new(
-        pool: Pool<Postgres>,
-        database_type: DatabaseType,
-        scan_start_value: u16,
-        scan_max_value: u32,
-    ) -> Self {
+    pub fn new(pool: Pool<Postgres>, database_type: DatabaseType) -> Self {
         SubstrateGateway {
             pool,
             database_type,
-            scan_start_value,
-            scan_max_value,
+            scan_start_value: 50,
+            scan_max_value: 100_000,
             evm_support: false,
             acala_support: false,
             contracts_support: false,
@@ -56,6 +51,16 @@ impl SubstrateGateway {
 
     pub fn gear_support(mut self, value: bool) -> Self {
         self.gear_support = value;
+        self
+    }
+
+    pub fn scan_start_value(mut self, value: u16) -> Self {
+        self.scan_start_value = value;
+        self
+    }
+
+    pub fn scan_max_value(mut self, value: u32) -> Self {
+        self.scan_max_value = value;
         self
     }
 

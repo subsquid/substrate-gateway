@@ -1,7 +1,6 @@
 use clap::Parser;
 use sqlx::postgres::PgPoolOptions;
 use sqlx::Executor;
-use std::boxed::Box;
 use std::time::Duration;
 use substrate_gateway::{DatabaseType, SubstrateGateway};
 
@@ -73,16 +72,13 @@ async fn main() -> std::io::Result<()> {
         })
         .connect_lazy(&args.database_url)
         .unwrap();
-    SubstrateGateway::new(
-        pool,
-        args.database_type,
-        args.scan_start_value,
-        args.scan_max_value,
-    )
-    .evm_support(args.evm_support)
-    .contracts_support(args.contracts_support)
-    .gear_support(args.gear_support)
-    .acala_support(args.acala_support)
-    .run()
-    .await
+    SubstrateGateway::new(pool, args.database_type)
+        .evm_support(args.evm_support)
+        .contracts_support(args.contracts_support)
+        .gear_support(args.gear_support)
+        .acala_support(args.acala_support)
+        .scan_start_value(args.scan_start_value)
+        .scan_max_value(args.scan_max_value)
+        .run()
+        .await
 }

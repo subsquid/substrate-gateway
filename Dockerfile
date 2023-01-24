@@ -1,4 +1,4 @@
-FROM --platform=$BUILDPLATFORM rust:1.61.0 AS builder
+FROM --platform=$BUILDPLATFORM rust:1.66.0 AS builder
 ARG TARGETPLATFORM
 ARG BUILDPLATFORM
 WORKDIR /substrate-gateway

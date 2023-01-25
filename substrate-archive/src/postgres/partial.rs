@@ -2,8 +2,9 @@ use super::{batch::BatchLoader, BatchResponse};
 use crate::entities::Batch;
 use crate::error::Error;
 use crate::Selections;
-use std::time::{Instant, Duration};
 use std::cmp::{max, min};
+use std::time::{Duration, Instant};
+use tracing::debug;
 
 const AVERAGE_EVENT_SIZE: usize = 250;
 const AVERAGE_CALL_SIZE: usize = 700;
@@ -23,7 +24,11 @@ pub struct PartialBatchLoader {
 }
 
 impl PartialBatchLoader {
-    pub fn new(loader: BatchLoader, scan_start_value: u16, scan_max_value: u32) -> PartialBatchLoader {
+    pub fn new(
+        loader: BatchLoader,
+        scan_start_value: u16,
+        scan_max_value: u32,
+    ) -> PartialBatchLoader {
         PartialBatchLoader {
             loader,
             scan_start_value,
@@ -46,6 +51,7 @@ impl PartialBatchLoader {
         let mut total_range = 0;
 
         loop {
+            debug!("scanning from {from_block} to {to_block}");
             let mut range_batch = self
                 .loader
                 .load(
@@ -77,7 +83,10 @@ impl PartialBatchLoader {
             } else {
                 let total_blocks = i32::try_from(batch.len()).unwrap();
                 min(
-                    max((total_range / total_blocks) * (scan_start_value - len), scan_start_value),
+                    max(
+                        (total_range / total_blocks) * (scan_start_value - len),
+                        scan_start_value,
+                    ),
                     scan_max_value,
                 )
             };

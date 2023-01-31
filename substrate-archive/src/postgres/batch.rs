@@ -1,6 +1,7 @@
 use super::serializer::{CallSerializer, EventSerializer, EvmLogSerializer, ExtrinsicSerializer};
 use super::utils::unify_and_merge;
 use super::DatabaseType;
+use crate::archive::Selections;
 use crate::entities::{Batch, BlockHeader, Call, Event, EvmLog, Extrinsic};
 use crate::error::Error;
 use crate::fields::{CallFields, EventFields, EvmLogFields, ExtrinsicFields};
@@ -10,7 +11,6 @@ use crate::selection::{
     EthTransactSelection, EventDataSelection, EventSelection, EvmLogSelection,
     GearMessageEnqueuedSelection, GearUserMessageSentSelection,
 };
-use crate::Selections;
 use sqlx::postgres::{PgArguments, Postgres};
 use sqlx::{Arguments, Pool};
 use std::collections::HashMap;
@@ -809,7 +809,8 @@ impl BatchLoader {
 
         let mut query = "SELECT event_id
             FROM contracts_contract_emitted
-            WHERE event_id > $1 AND event_id < $2".to_string();
+            WHERE event_id > $1 AND event_id < $2"
+            .to_string();
         let mut args = PgArguments::default();
         args.add(&from_block);
         args.add(&to_block);
@@ -887,7 +888,7 @@ impl BatchLoader {
                     } else {
                         "frontier_evm_log"
                     }
-                },
+                }
                 DatabaseType::Postgres => "frontier_evm_log",
             };
             let mut args = PgArguments::default();
@@ -945,7 +946,8 @@ impl BatchLoader {
             .observe_duration("event")
             .await?;
 
-        let mut extrinsics = logs.iter()
+        let mut extrinsics = logs
+            .iter()
             .filter_map(|log| log.extrinsic_id.clone())
             .collect::<Vec<String>>();
         extrinsics.sort();

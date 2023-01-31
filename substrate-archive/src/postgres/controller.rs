@@ -1,9 +1,9 @@
 use super::batch::BatchLoader;
 use super::partial::{PartialBatchLoader, PartialOptions};
 use super::{BatchResponse, DatabaseType};
+use crate::archive::BatchOptions;
 use crate::error::Error;
 use crate::metrics::ObserverExt;
-use crate::BatchOptions;
 use sqlx::{Pool, Postgres};
 
 pub struct BatchController {
@@ -63,7 +63,8 @@ impl BatchController {
             }
             None => {
                 let loader = BatchLoader::new(self.pool.clone(), self.database_type.clone());
-                let strategy = PartialBatchLoader::new(loader, self.scan_start_value, self.scan_max_value);
+                let strategy =
+                    PartialBatchLoader::new(loader, self.scan_start_value, self.scan_max_value);
                 let options = PartialOptions {
                     from_block: options.from_block,
                     to_block,

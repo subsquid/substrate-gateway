@@ -5,14 +5,12 @@ use inputs::{
     GearMessageEnqueuedSelectionInput, GearUserMessageSentSelectionInput,
 };
 use std::sync::{Arc, Mutex};
+use substrate_archive::archive::{ArchiveService, BatchOptions, Selections};
 use substrate_archive::entities::{Batch, Metadata, Status};
-use substrate_archive::error::Error;
-use substrate_archive::postgres::BatchResponse;
 use substrate_archive::selection::{
     AcalaEvmEventSelection, CallSelection, ContractsEventSelection, EthTransactSelection,
     EventSelection, EvmLogSelection, GearMessageEnqueuedSelection, GearUserMessageSentSelection,
 };
-use substrate_archive::{ArchiveService, BatchOptions, Selections};
 
 mod inputs;
 
@@ -43,16 +41,7 @@ fn is_gear_supported(ctx: &Context<'_>) -> bool {
 pub struct NextBlock(pub Option<i32>);
 
 pub struct QueryRoot {
-    pub archive: Box<
-        dyn ArchiveService<
-                Batch = BatchResponse,
-                BatchOptions = BatchOptions,
-                Metadata = Metadata,
-                Status = Status,
-                Error = Error,
-            > + Send
-            + Sync,
-    >,
+    pub archive: Box<dyn ArchiveService + Send + Sync>,
 }
 
 #[Object]

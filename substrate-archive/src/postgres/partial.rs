@@ -1,7 +1,7 @@
 use super::{batch::BatchLoader, BatchResponse};
+use crate::archive::Selections;
 use crate::entities::Batch;
 use crate::error::Error;
-use crate::Selections;
 use std::cmp::{max, min};
 use std::time::{Duration, Instant};
 use tracing::debug;

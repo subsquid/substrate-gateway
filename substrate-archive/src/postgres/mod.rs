@@ -1,6 +1,6 @@
 use self::controller::BatchController;
-use super::{ArchiveService, BatchOptions};
-use crate::entities::{Batch, Metadata, Status};
+use crate::archive::{ArchiveService, BatchOptions, BatchResponse};
+use crate::entities::{Metadata, Status};
 use crate::error::Error;
 use crate::metrics::ObserverExt;
 use sqlx::{Pool, Postgres};
@@ -21,11 +21,6 @@ pub enum DatabaseType {
     Cockroach,
 }
 
-pub struct BatchResponse {
-    pub data: Vec<Batch>,
-    pub next_block: Option<i32>,
-}
-
 pub struct PostgresArchive {
     pool: Pool<Postgres>,
     database_type: DatabaseType,
@@ -35,21 +30,17 @@ pub struct PostgresArchive {
 
 #[async_trait::async_trait]
 impl ArchiveService for PostgresArchive {
-    type Batch = BatchResponse;
-    type BatchOptions = BatchOptions;
-    type Metadata = Metadata;
-    type Status = Status;
-    type Error = Error;
-
-    async fn batch(&self, options: &BatchOptions) -> Result<BatchResponse, Self::Error> {
+    async fn batch(&self, options: &BatchOptions) -> Result<BatchResponse, Error> {
         let controller = BatchController::new(
-            self.pool.clone(), self.database_type.clone(),
-            self.scan_start_value, self.scan_max_value
+            self.pool.clone(),
+            self.database_type.clone(),
+            self.scan_start_value,
+            self.scan_max_value,
         );
         controller.load(options).await
     }
 
-    async fn metadata(&self) -> Result<Vec<Self::Metadata>, Self::Error> {
+    async fn metadata(&self) -> Result<Vec<Metadata>, Error> {
         let query = "SELECT id, spec_name, spec_version::int8, block_height::int8, block_hash, hex
             FROM metadata ORDER BY block_height";
         let metadata = sqlx::query_as::<_, Metadata>(query)
@@ -59,7 +50,7 @@ impl ArchiveService for PostgresArchive {
         Ok(metadata)
     }
 
-    async fn metadata_by_id(&self, id: String) -> Result<Option<Self::Metadata>, Self::Error> {
+    async fn metadata_by_id(&self, id: String) -> Result<Option<Metadata>, Error> {
         let query = "SELECT id, spec_name, spec_version::int8, block_height::int8, block_hash, hex
             FROM metadata WHERE id = $1";
         let metadata = sqlx::query_as::<_, Metadata>(query)
@@ -86,7 +77,7 @@ impl PostgresArchive {
         pool: Pool<Postgres>,
         database_type: DatabaseType,
         scan_start_value: u16,
-        scan_max_value: u32
+        scan_max_value: u32,
     ) -> PostgresArchive {
         PostgresArchive {
             pool,

@@ -21,6 +21,16 @@ pub struct BatchLoader {
     database_type: DatabaseType,
 }
 
+pub struct BatchResponse {
+    pub data: Vec<Batch>,
+    pub last_block: i32,
+}
+
+enum LoadedData<T> {
+    Full(Vec<T>),
+    Preload(Vec<i32>),
+}
+
 const EVENTS_BY_ID_QUERY: &str = "SELECT
         id,
         block_id,
@@ -48,13 +58,26 @@ impl BatchLoader {
         to_block: i32,
         include_all_blocks: bool,
         selections: &Selections,
-    ) -> Result<Vec<Batch>, Error> {
-        let mut calls = self
-            .load_calls(from_block, to_block, &selections.call)
+    ) -> Result<BatchResponse, Error> {
+        let to_block = self
+            .get_safe_to_block(from_block, to_block, &selections)
             .await?;
-        let mut events = self
-            .load_events(from_block, to_block, &selections.event)
-            .await?;
+
+        let block_only = false;
+        let mut calls = match self
+            .load_calls(from_block, to_block, &selections.call, block_only)
+            .await?
+        {
+            LoadedData::Full(data) => data,
+            LoadedData::Preload(_) => unreachable!(),
+        };
+        let mut events = match self
+            .load_events(from_block, to_block, &selections.event, block_only)
+            .await?
+        {
+            LoadedData::Full(data) => data,
+            LoadedData::Preload(_) => unreachable!(),
+        };
         let evm_logs = self
             .load_evm_logs(from_block, to_block, &selections.evm_log)
             .await?;
@@ -401,7 +424,10 @@ impl BatchLoader {
             extrinsics_by_block,
             logs_by_block,
         );
-        Ok(batch)
+        Ok(BatchResponse {
+            data: batch,
+            last_block: to_block,
+        })
     }
 
     async fn load_calls(
@@ -409,9 +435,10 @@ impl BatchLoader {
         from_block: i32,
         to_block: i32,
         selections: &Vec<CallSelection>,
-    ) -> Result<Vec<Call>, Error> {
+        block_only: bool,
+    ) -> Result<LoadedData<Call>, Error> {
         if selections.is_empty() {
-            return Ok(Vec::new());
+            return Ok(LoadedData::Full(vec![]));
         }
 
         let wildcard = selections.iter().any(|selection| selection.name == "*");
@@ -421,6 +448,28 @@ impl BatchLoader {
             .collect::<Vec<String>>();
         let from_block = format!("{:010}", from_block);
         let to_block = format!("{:010}", to_block + 1);
+
+        if block_only {
+            let mut query = String::from(
+                "SELECT block_id
+                FROM call WHERE block_id > $1 AND block_id < $2",
+            );
+            let mut args = PgArguments::default();
+            args.add(&from_block);
+            args.add(&to_block);
+            if !wildcard {
+                query.push_str(&format!(" AND name = ANY($3)"));
+                args.add(&names)
+            }
+            let blocks = sqlx::query_scalar_with::<_, String, _>(&query, args)
+                .fetch_all(&self.pool)
+                .observe_duration("call")
+                .await?
+                .iter()
+                .map(|block_id| block_id[..10].parse().unwrap())
+                .collect();
+            return Ok(LoadedData::Preload(blocks));
+        }
 
         let mut query = String::from(
             "SELECT
@@ -496,7 +545,7 @@ impl BatchLoader {
             parents_ids.sort();
             parents_ids.dedup();
         }
-        Ok(calls)
+        Ok(LoadedData::Full(calls))
     }
 
     async fn load_calls_by_ids(&self, ids: &Vec<String>) -> Result<Vec<Call>, Error> {
@@ -540,9 +589,10 @@ impl BatchLoader {
         from_block: i32,
         to_block: i32,
         selections: &Vec<EventSelection>,
-    ) -> Result<Vec<Event>, Error> {
+        block_only: bool,
+    ) -> Result<LoadedData<Event>, Error> {
         if selections.is_empty() {
-            return Ok(Vec::new());
+            return Ok(LoadedData::Full(Vec::new()));
         }
         let wildcard = selections.iter().any(|selection| selection.name == "*");
         let names = selections
@@ -552,6 +602,28 @@ impl BatchLoader {
 
         let from_block = format!("{:010}", from_block);
         let to_block = format!("{:010}", to_block + 1);
+
+        if block_only {
+            let mut query = String::from(
+                "SELECT block_id
+                FROM event WHERE block_id > $1 AND block_id < $2",
+            );
+            let mut args = PgArguments::default();
+            args.add(&from_block);
+            args.add(&to_block);
+            if !wildcard {
+                query.push_str(&format!(" AND name = ANY($3)"));
+                args.add(&names)
+            }
+            let blocks = sqlx::query_scalar_with::<_, String, _>(&query, args)
+                .fetch_all(&self.pool)
+                .observe_duration("event")
+                .await?
+                .iter()
+                .map(|block_id| block_id[..10].parse().unwrap())
+                .collect();
+            return Ok(LoadedData::Preload(blocks));
+        }
 
         let mut query = String::from(
             "SELECT
@@ -578,7 +650,7 @@ impl BatchLoader {
             .fetch_all(&self.pool)
             .observe_duration("event")
             .await?;
-        Ok(events)
+        Ok(LoadedData::Full(events))
     }
 
     async fn load_messages_enqueued(
@@ -1145,6 +1217,56 @@ impl BatchLoader {
             .observe_duration("extrinsic")
             .await?;
         Ok(extrinsics)
+    }
+
+    async fn get_safe_to_block(
+        &self,
+        from_block: i32,
+        to_block: i32,
+        selections: &Selections,
+    ) -> Result<i32, Error> {
+        let mut blocks = vec![];
+
+        let block_only = true;
+        match self
+            .load_calls(from_block, to_block, &selections.call, block_only)
+            .await?
+        {
+            LoadedData::Preload(mut call_blocks) => blocks.append(&mut call_blocks),
+            _ => {}
+        };
+        match self
+            .load_events(from_block, to_block, &selections.event, block_only)
+            .await?
+        {
+            LoadedData::Preload(mut event_blocks) => blocks.append(&mut event_blocks),
+            _ => {}
+        };
+
+        blocks.sort();
+        let mut count = 0;
+        let mut last_block: Option<i32> = None;
+        blocks.retain(|block| {
+            if count > 1000 {
+                if last_block.unwrap() == *block {
+                    count += 1;
+                    last_block = Some(*block);
+                    return true;
+                } else {
+                    return false;
+                }
+            } else {
+                count += 1;
+                last_block = Some(*block);
+                return true;
+            }
+        });
+
+        if !blocks.is_empty() {
+            return Ok(*blocks.last().unwrap());
+        }
+
+        Ok(to_block)
     }
 
     fn create_batch(

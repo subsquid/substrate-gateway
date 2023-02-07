@@ -52,7 +52,7 @@ impl PartialBatchLoader {
 
         loop {
             debug!("scanning from {from_block} to {to_block}");
-            let mut range_batch = self
+            let mut batch_response = self
                 .loader
                 .load(
                     from_block,
@@ -61,10 +61,18 @@ impl PartialBatchLoader {
                     &options.selections,
                 )
                 .await?;
-            let len = i32::try_from(range_batch.len()).unwrap();
+            let len = i32::try_from(batch_response.data.len()).unwrap();
+            size += size_of_batch(&batch_response.data);
+            batch.append(&mut batch_response.data);
+
+            if batch_response.last_block != to_block {
+                return Ok(BatchResponse {
+                    data: batch,
+                    next_block: Some(batch_response.last_block + 1),
+                });
+            }
+
             total_range += range_width;
-            size += size_of_batch(&range_batch);
-            batch.append(&mut range_batch);
 
             if size > 1024 * 1024 {
                 break;

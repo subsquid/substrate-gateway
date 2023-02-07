@@ -2,6 +2,20 @@
 
 All notable changes to this project will be documented in this file.
 
+## [2.5.1] - 2023-02-07
+
+### Bug Fixes
+
+- Reduce batch loader abnormal memory usage
+
+### Miscellaneous Tasks
+
+- Fix tests and make scan_* parameters optional
+- Remove redundant entities convertion
+- Bump dependencies
+- Extend logging
+- Simplify archive api
+
 ## [2.5.0] - 2022-12-23
 
 ### Features

@@ -1,15 +1,16 @@
 use async_graphql::{Context, Object, Result};
 use inputs::{
     AcalaEvmEventSelectionInput, CallSelectionInput, ContractsEventSelectionInput,
-    EthTransactSelectionInput, EventSelectionInput, EvmLogSelectionInput,
-    GearMessageEnqueuedSelectionInput, GearUserMessageSentSelectionInput,
+    EthExecutedSelectionInput, EthTransactSelectionInput, EventSelectionInput,
+    EvmLogSelectionInput, GearMessageEnqueuedSelectionInput, GearUserMessageSentSelectionInput,
 };
 use std::sync::{Arc, Mutex};
 use substrate_archive::archive::{ArchiveService, BatchOptions, Selections};
 use substrate_archive::entities::{Batch, Metadata, Status};
 use substrate_archive::selection::{
-    AcalaEvmEventSelection, CallSelection, ContractsEventSelection, EthTransactSelection,
-    EventSelection, EvmLogSelection, GearMessageEnqueuedSelection, GearUserMessageSentSelection,
+    AcalaEvmEventSelection, CallSelection, ContractsEventSelection, EthExecutedSelection,
+    EthTransactSelection, EventSelection, EvmLogSelection, GearMessageEnqueuedSelection,
+    GearUserMessageSentSelection,
 };
 
 mod inputs;
@@ -58,6 +59,8 @@ impl QueryRoot {
         >,
         #[graphql(name = "ethereumTransactions", visible = "is_evm_supported")]
         eth_transact_selections: Option<Vec<EthTransactSelectionInput>>,
+        #[graphql(name = "ethereumExecuted", visible = "is_evm_supported")]
+        eth_executed_selections: Option<Vec<EthExecutedSelectionInput>>,
         #[graphql(name = "contractsEvents", visible = "is_contracts_supported")]
         contracts_event_selections: Option<Vec<ContractsEventSelectionInput>>,
         #[graphql(name = "gearMessagesEnqueued", visible = "is_gear_supported")]
@@ -78,6 +81,7 @@ impl QueryRoot {
             event: self.unwrap_selections::<EventSelectionInput, EventSelection>(event_selections),
             evm_log: self.unwrap_selections::<EvmLogSelectionInput, EvmLogSelection>(evm_log_selections),
             eth_transact: self.unwrap_selections::<EthTransactSelectionInput, EthTransactSelection>(eth_transact_selections),
+            eth_executed: self.unwrap_selections::<EthExecutedSelectionInput, EthExecutedSelection>(eth_executed_selections),
             contracts_event: self.unwrap_selections::<ContractsEventSelectionInput, ContractsEventSelection>(contracts_event_selections),
             gear_message_enqueued: self.unwrap_selections::<GearMessageEnqueuedSelectionInput, GearMessageEnqueuedSelection>(gear_message_enqueued_selections),
             gear_user_message_sent: self.unwrap_selections::<GearUserMessageSentSelectionInput, GearUserMessageSentSelection>(gear_user_message_sent_selections),

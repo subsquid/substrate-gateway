@@ -10,7 +10,7 @@ async fn test_parent_call_loaded() {
     let selections_data = [json!({"_all": true}), json!({"parent": {"_all": true}})];
     for selection_data in selections_data {
         let batch = client
-            .batch(json!({
+            .limited_batch(json!({
                 "limit": 1,
                 "calls": [{
                     "name": "Balances.transfer",
@@ -36,7 +36,7 @@ async fn test_parent_call_skipped() {
     launch_gateway();
     let client = Client::new();
     let batch = client
-        .batch(json!({
+        .limited_batch(json!({
             "limit": 1,
             "calls": [{
                 "name": "Balances.transfer",
@@ -66,7 +66,7 @@ async fn test_returned_calls_are_unique() {
     launch_gateway();
     let client = Client::new();
     let batch = client
-        .batch(json!({
+        .limited_batch(json!({
             "limit": 1,
             "calls": [{"name": "Ethereum.transact"}],
             "ethereumTransactions": [{"contract": "0xb654611f84a8dc429ba3cb4fda9fad236c505a1a"}],
@@ -90,7 +90,7 @@ async fn test_event_loads_related_call() {
     ];
     for selection in selections {
         let batch = client
-            .batch(json!({
+            .limited_batch(json!({
                 "limit": 1,
                 "events": json!([selection])
             }))
@@ -105,7 +105,7 @@ async fn test_evm_log_has_tx_hash() {
     launch_gateway();
     let client = Client::new();
     let batch = client
-        .batch(json!({
+        .limited_batch(json!({
             "limit": 1,
             "evmLogs": [{
                 "contract": "0xb654611f84a8dc429ba3cb4fda9fad236c505a1a",
@@ -133,7 +133,7 @@ async fn test_ethereum_transactions() {
     launch_gateway();
     let client = Client::new();
     let batch = client
-        .batch(json!({
+        .limited_batch(json!({
             "limit": 1,
             "ethereumTransactions": [{
                 "contract": "0xb654611f84a8dc429ba3cb4fda9fad236c505a1a"
@@ -149,7 +149,7 @@ async fn test_ethereum_transactions_wildcard_search() {
     launch_gateway();
     let client = Client::new();
     let batch = client
-        .batch(json!({
+        .limited_batch(json!({
             "limit": 1,
             "ethereumTransactions": [{
                 "contract": "*",
@@ -162,11 +162,26 @@ async fn test_ethereum_transactions_wildcard_search() {
 }
 
 #[actix_web::test]
-async fn test_contracts_events() {
+async fn test_ethereum_executed() {
     launch_gateway();
     let client = Client::new();
     let batch = client
         .batch(json!({
+            "ethereumExecuted": [{
+                "contract": "0x0000000000000000000000000000000000000000"
+            }]
+        }))
+        .await;
+    let event = &batch.events[0];
+    assert!(event.id == "0000569006-000085-5e412");
+}
+
+#[actix_web::test]
+async fn test_contracts_events() {
+    launch_gateway();
+    let client = Client::new();
+    let batch = client
+        .limited_batch(json!({
             "limit": 1,
             "contractsEvents": [{
                 "contract": "0xf98402623dbe32d22b67e0a25136b763615c14fd4201b1aac8832ec52aa64d10",
@@ -187,7 +202,7 @@ async fn test_wildcard_search() {
     launch_gateway();
     let client = Client::new();
     let batch = client
-        .batch(json!({
+        .limited_batch(json!({
             "limit": 1,
             "fromBlock": 734,
             "calls": [{"name": "*"}],
@@ -207,7 +222,7 @@ async fn test_evm_wildcard_search() {
     launch_gateway();
     let client = Client::new();
     let batch = client
-        .batch(json!({
+        .limited_batch(json!({
             "limit": 1,
             "evmLogs": [{"contract": "*"}],
         }))
@@ -221,7 +236,7 @@ async fn test_evm_wildcard_search() {
 async fn test_gear_messages_enqueued() {
     launch_gateway();
     let client = Client::new();
-    let batch = client.batch(json!({
+    let batch = client.limited_batch(json!({
         "limit": 1,
         "gearMessagesEnqueued": [{"program": "0x5466a0b28225bcc8e33f6bdde7a95f5fcf81bfd94d70ca099d0a8bae230dbaa1"}],
     })).await;
@@ -234,7 +249,7 @@ async fn test_gear_messages_enqueued() {
 async fn test_gear_user_sent_messages() {
     launch_gateway();
     let client = Client::new();
-    let batch = client.batch(json!({
+    let batch = client.limited_batch(json!({
         "limit": 1,
         "gearUserMessagesSent": [{"program": "0x5466a0b28225bcc8e33f6bdde7a95f5fcf81bfd94d70ca099d0a8bae230dbaa1"}],
     })).await;
@@ -248,7 +263,7 @@ async fn test_acala_evm_executed() {
     launch_gateway();
     let client = Client::new();
     let batch = client
-        .batch(json!({
+        .limited_batch(json!({
             "limit": 1,
             "acalaEvmExecuted": [{"contract": "0x0000000000000000000100000000000000000080"}],
         }))
@@ -263,7 +278,7 @@ async fn test_acala_evm_executed_wildcard_search() {
     launch_gateway();
     let client = Client::new();
     let batch = client
-        .batch(json!({
+        .limited_batch(json!({
             "limit": 1,
             "acalaEvmExecuted": [{
                 "contract": "*",

@@ -4,8 +4,9 @@ use substrate_archive::fields::{
 };
 use substrate_archive::selection::{
     AcalaEvmEventSelection, AcalaEvmLog, CallDataSelection, CallSelection, ContractsEventSelection,
-    EthTransactSelection, EventDataSelection, EventSelection, EvmLogDataSelection, EvmLogSelection,
-    GearMessageEnqueuedSelection, GearUserMessageSentSelection,
+    EthExecutedSelection, EthTransactSelection, EventDataSelection, EventSelection,
+    EvmLogDataSelection, EvmLogSelection, GearMessageEnqueuedSelection,
+    GearUserMessageSentSelection,
 };
 
 #[derive(InputObject, Clone, Debug)]
@@ -279,6 +280,24 @@ impl From<EthTransactSelectionInput> for EthTransactSelection {
             data: selection
                 .data
                 .map_or_else(|| CallDataSelection::new(true), CallDataSelection::from),
+        }
+    }
+}
+
+#[derive(InputObject, Clone)]
+#[graphql(name = "EthereumExecutedSelection")]
+pub struct EthExecutedSelectionInput {
+    pub contract: String,
+    pub data: Option<EventDataSelectionInput>,
+}
+
+impl From<EthExecutedSelectionInput> for EthExecutedSelection {
+    fn from(selection: EthExecutedSelectionInput) -> Self {
+        EthExecutedSelection {
+            contract: selection.contract,
+            data: selection
+                .data
+                .map_or_else(|| EventDataSelection::new(true), EventDataSelection::from),
         }
     }
 }

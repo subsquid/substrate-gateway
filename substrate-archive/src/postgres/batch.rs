@@ -8,8 +8,8 @@ use crate::fields::{CallFields, EventFields, EvmLogFields, ExtrinsicFields};
 use crate::metrics::ObserverExt;
 use crate::selection::{
     AcalaEvmEventSelection, AcalaEvmLog, CallDataSelection, CallSelection, ContractsEventSelection,
-    EthTransactSelection, EventDataSelection, EventSelection, EvmLogSelection,
-    GearMessageEnqueuedSelection, GearUserMessageSentSelection,
+    EthExecutedSelection, EthTransactSelection, EventDataSelection, EventSelection,
+    EvmLogSelection, GearMessageEnqueuedSelection, GearUserMessageSentSelection,
 };
 use sqlx::postgres::{PgArguments, Postgres};
 use sqlx::{Arguments, Pool};
@@ -59,9 +59,9 @@ impl BatchLoader {
         include_all_blocks: bool,
         selections: &Selections,
     ) -> Result<BatchResponse, Error> {
-        let to_block = self
-            .get_safe_to_block(from_block, to_block, &selections)
-            .await?;
+        // let to_block = self
+        //     .get_safe_to_block(from_block, to_block, &selections)
+        //     .await?;
 
         let block_only = false;
         let mut calls = match self
@@ -83,6 +83,9 @@ impl BatchLoader {
             .await?;
         let mut eth_transactions = self
             .load_eth_transactions(from_block, to_block, &selections.eth_transact)
+            .await?;
+        let mut eth_executed = self
+            .load_eth_executed(from_block, to_block, &selections.eth_executed)
             .await?;
         let mut contracts_events = self
             .load_contracts_events(from_block, to_block, &selections.contracts_event)
@@ -125,6 +128,9 @@ impl BatchLoader {
                 .iter()
                 .for_each(|log| ids.push(log.block_id.clone()));
             eth_transactions
+                .iter()
+                .for_each(|call| ids.push(call.block_id.clone()));
+            eth_executed
                 .iter()
                 .for_each(|call| ids.push(call.block_id.clone()));
             contracts_events
@@ -286,6 +292,14 @@ impl BatchLoader {
             }
         }
         events.append(&mut contracts_events);
+        for event in &eth_executed {
+            for selection in &selections.eth_executed {
+                if selection.r#match(event) {
+                    process_event(event, &selection.data);
+                }
+            }
+        }
+        events.append(&mut eth_executed);
 
         for log in &evm_logs {
             for selection in &selections.evm_log {
@@ -1150,6 +1164,49 @@ impl BatchLoader {
             parents_ids.dedup();
         }
         Ok(calls)
+    }
+
+    async fn load_eth_executed(
+        &self,
+        from_block: i32,
+        to_block: i32,
+        selections: &Vec<EthExecutedSelection>,
+    ) -> Result<Vec<Event>, Error> {
+        if selections.is_empty() {
+            return Ok(Vec::new());
+        }
+
+        let from_block = format!("{:010}", from_block);
+        let to_block = format!("{:010}", to_block + 1);
+        let wildcard = selections.iter().any(|selection| selection.contract == "*");
+        let contracts = selections
+            .iter()
+            .map(|selection| selection.contract.clone())
+            .collect::<Vec<String>>();
+
+        let mut query = "SELECT event_id
+            FROM frontier_ethereum_executed
+            WHERE event_id > $1 AND event_id < $2"
+            .to_string();
+        let mut args = PgArguments::default();
+        args.add(&from_block);
+        args.add(&to_block);
+        if !wildcard {
+            args.add(&contracts);
+            query.push_str(" AND contract = ANY($3)");
+        }
+        query.push_str(" ORDER BY event_id");
+        let ids = sqlx::query_scalar_with::<_, String, _>(&query, args)
+            .fetch_all(&self.pool)
+            .observe_duration("frontier_ethereum_executed")
+            .await?;
+
+        let events = sqlx::query_as::<_, Event>(EVENTS_BY_ID_QUERY)
+            .bind(&ids)
+            .fetch_all(&self.pool)
+            .observe_duration("event")
+            .await?;
+        Ok(events)
     }
 
     async fn load_blocks(&self, from_block: i32, to_block: i32) -> Result<Vec<BlockHeader>, Error> {

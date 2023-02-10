@@ -2,6 +2,12 @@
 
 All notable changes to this project will be documented in this file.
 
+## [2.6.0] - 2023-02-10
+
+### Features
+
+- Add ethereumExecuted api
+
 ## [2.5.1] - 2023-02-07
 
 ### Bug Fixes

@@ -34,3 +34,9 @@ substrate-archive = { path = "./substrate-archive", version = "0.1.0", features 
 [dev-dependencies]
 reqwest = { version = "0.11.11", features = ["json"] }
 serde = { version = "1", features = ["derive"], default-features = false }
+
+[workspace]
+members = [
+  ".",
+  "substrate-archive",
+]

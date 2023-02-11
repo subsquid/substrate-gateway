@@ -13,5 +13,5 @@ done
 
 psql -U $DB_USER -h $DB_HOST -p $DB_PORT -d $DB_NAME -f db-schema.sql || exit 1
 psql -U $DB_USER -h $DB_HOST -p $DB_PORT -d $DB_NAME -f data.sql || exit 1
-cargo test -- --nocapture
+cargo test --workspace -- --nocapture
 docker-compose down || exit 1

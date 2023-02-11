@@ -11,8 +11,9 @@ use crate::selection::{
     EthExecutedSelection, EthTransactSelection, EventDataSelection, EventSelection,
     EvmLogSelection, GearMessageEnqueuedSelection, GearUserMessageSentSelection,
 };
-use sqlx::postgres::{PgArguments, Postgres};
-use sqlx::{Arguments, Pool};
+use crate::sql::{select, Parameters};
+use sqlx::postgres::Postgres;
+use sqlx::Pool;
 use std::collections::HashMap;
 
 #[derive(Clone)]
@@ -24,11 +25,6 @@ pub struct BatchLoader {
 pub struct BatchResponse {
     pub data: Vec<Batch>,
     pub last_block: i32,
-}
-
-enum LoadedData<T> {
-    Full(Vec<T>),
-    Preload(Vec<i32>),
 }
 
 const EVENTS_BY_ID_QUERY: &str = "SELECT
@@ -59,25 +55,12 @@ impl BatchLoader {
         include_all_blocks: bool,
         selections: &Selections,
     ) -> Result<BatchResponse, Error> {
-        // let to_block = self
-        //     .get_safe_to_block(from_block, to_block, &selections)
-        //     .await?;
-
-        let block_only = false;
-        let mut calls = match self
-            .load_calls(from_block, to_block, &selections.call, block_only)
-            .await?
-        {
-            LoadedData::Full(data) => data,
-            LoadedData::Preload(_) => unreachable!(),
-        };
-        let mut events = match self
-            .load_events(from_block, to_block, &selections.event, block_only)
-            .await?
-        {
-            LoadedData::Full(data) => data,
-            LoadedData::Preload(_) => unreachable!(),
-        };
+        let mut calls = self
+            .load_calls(from_block, to_block, &selections.call)
+            .await?;
+        let mut events = self
+            .load_events(from_block, to_block, &selections.event)
+            .await?;
         let evm_logs = self
             .load_evm_logs(from_block, to_block, &selections.evm_log)
             .await?;
@@ -352,7 +335,7 @@ impl BatchLoader {
         }
 
         if !call_fields_to_load.is_empty() {
-            let call_ids = call_fields_to_load.keys().cloned().collect();
+            let call_ids: Vec<String> = call_fields_to_load.keys().cloned().collect();
             let mut additional_calls = self.load_calls_by_ids(&call_ids).await?;
             let mut call_lookup: HashMap<String, &Call> = HashMap::new();
             for call in &additional_calls {
@@ -449,10 +432,9 @@ impl BatchLoader {
         from_block: i32,
         to_block: i32,
         selections: &Vec<CallSelection>,
-        block_only: bool,
-    ) -> Result<LoadedData<Call>, Error> {
+    ) -> Result<Vec<Call>, Error> {
         if selections.is_empty() {
-            return Ok(LoadedData::Full(vec![]));
+            return Ok(vec![]);
         }
 
         let wildcard = selections.iter().any(|selection| selection.name == "*");
@@ -463,66 +445,45 @@ impl BatchLoader {
         let from_block = format!("{:010}", from_block);
         let to_block = format!("{:010}", to_block + 1);
 
-        if block_only {
-            let mut query = String::from(
-                "SELECT block_id
-                FROM call WHERE block_id > $1 AND block_id < $2",
-            );
-            let mut args = PgArguments::default();
-            args.add(&from_block);
-            args.add(&to_block);
-            if !wildcard {
-                query.push_str(&format!(" AND name = ANY($3)"));
-                args.add(&names)
-            }
-            let blocks = sqlx::query_scalar_with::<_, String, _>(&query, args)
-                .fetch_all(&self.pool)
-                .observe_duration("call")
-                .await?
-                .iter()
-                .map(|block_id| block_id[..10].parse().unwrap())
-                .collect();
-            return Ok(LoadedData::Preload(blocks));
-        }
-
-        let mut query = String::from(
-            "SELECT
-                id,
-                parent_id,
-                block_id,
-                extrinsic_id,
-                name,
-                args,
-                success,
-                error,
-                origin,
-                pos::int8
-            FROM call WHERE block_id > $1 AND block_id < $2",
-        );
-        let mut args = PgArguments::default();
-        args.add(&from_block);
-        args.add(&to_block);
+        let mut params = Parameters::default();
+        let mut query = select([
+            "id",
+            "parent_id",
+            "block_id",
+            "extrinsic_id",
+            "name",
+            "args",
+            "success",
+            "error",
+            "origin",
+            "pos::int8",
+        ])
+        .from("call")
+        .where_(format!("block_id > {}", params.add(&from_block)))
+        .where_(format!("block_id < {}", params.add(&to_block)));
         if !wildcard {
-            query.push_str(&format!(" AND name = ANY($3)"));
-            args.add(&names)
+            query = query.where_(format!("name = ANY({})", params.add(&names)));
         }
-        let mut calls = sqlx::query_as_with::<_, Call, _>(&query, args)
+        let mut calls = sqlx::query_as_with::<_, Call, _>(&query.to_string(), params.get())
             .fetch_all(&self.pool)
             .observe_duration("call")
             .await?;
 
-        let query = "SELECT
-                id,
-                parent_id,
-                block_id,
-                extrinsic_id,
-                name,
-                args,
-                success,
-                error,
-                origin,
-                pos::int8
-            FROM call WHERE id = ANY($1::varchar(30)[])";
+        let query = select([
+            "id",
+            "parent_id",
+            "block_id",
+            "extrinsic_id",
+            "name",
+            "args",
+            "success",
+            "error",
+            "origin",
+            "pos::int8",
+        ])
+        .from("call")
+        .where_("id = ANY($1::varchar(30)[])")
+        .to_string();
         let mut parents_ids: Vec<String> = calls
             .iter()
             .filter_map(|call| call.parent_id.clone())
@@ -542,7 +503,7 @@ impl BatchLoader {
                 })
                 .collect();
             if !to_load.is_empty() {
-                let mut parents = sqlx::query_as::<_, Call>(query)
+                let mut parents = sqlx::query_as::<_, Call>(&query)
                     .bind(to_load)
                     .fetch_all(&self.pool)
                     .observe_duration("call")
@@ -559,10 +520,10 @@ impl BatchLoader {
             parents_ids.sort();
             parents_ids.dedup();
         }
-        Ok(LoadedData::Full(calls))
+        Ok(calls)
     }
 
-    async fn load_calls_by_ids(&self, ids: &Vec<String>) -> Result<Vec<Call>, Error> {
+    async fn load_calls_by_ids(&self, ids: &[String]) -> Result<Vec<Call>, Error> {
         // i inject ids into the query otherwise it executes so long
         let ids = ids
             .iter()
@@ -603,10 +564,9 @@ impl BatchLoader {
         from_block: i32,
         to_block: i32,
         selections: &Vec<EventSelection>,
-        block_only: bool,
-    ) -> Result<LoadedData<Event>, Error> {
+    ) -> Result<Vec<Event>, Error> {
         if selections.is_empty() {
-            return Ok(LoadedData::Full(Vec::new()));
+            return Ok(vec![]);
         }
         let wildcard = selections.iter().any(|selection| selection.name == "*");
         let names = selections
@@ -617,54 +577,29 @@ impl BatchLoader {
         let from_block = format!("{:010}", from_block);
         let to_block = format!("{:010}", to_block + 1);
 
-        if block_only {
-            let mut query = String::from(
-                "SELECT block_id
-                FROM event WHERE block_id > $1 AND block_id < $2",
-            );
-            let mut args = PgArguments::default();
-            args.add(&from_block);
-            args.add(&to_block);
-            if !wildcard {
-                query.push_str(&format!(" AND name = ANY($3)"));
-                args.add(&names)
-            }
-            let blocks = sqlx::query_scalar_with::<_, String, _>(&query, args)
-                .fetch_all(&self.pool)
-                .observe_duration("event")
-                .await?
-                .iter()
-                .map(|block_id| block_id[..10].parse().unwrap())
-                .collect();
-            return Ok(LoadedData::Preload(blocks));
-        }
-
-        let mut query = String::from(
-            "SELECT
-                id,
-                block_id,
-                index_in_block::int8,
-                phase,
-                extrinsic_id,
-                call_id,
-                name,
-                args,
-                pos::int8
-            FROM event
-            WHERE block_id > $1 AND block_id < $2",
-        );
-        let mut args = PgArguments::default();
-        args.add(&from_block);
-        args.add(&to_block);
+        let mut params = Parameters::default();
+        let mut query = select([
+            "id",
+            "block_id",
+            "index_in_block::int8",
+            "phase",
+            "extrinsic_id",
+            "call_id",
+            "name",
+            "args",
+            "pos::int8",
+        ])
+        .from("event")
+        .where_(format!("block_id > {}", params.add(&from_block)))
+        .where_(format!("block_id < {}", params.add(&to_block)));
         if !wildcard {
-            query.push_str(&format!(" AND name = ANY($3)"));
-            args.add(&names)
+            query = query.where_(format!("name = ANY({})", params.add(&names)));
         }
-        let events = sqlx::query_as_with::<_, Event, _>(&query, args)
+        let events = sqlx::query_as_with::<_, Event, _>(&query.to_string(), params.get())
             .fetch_all(&self.pool)
             .observe_duration("event")
             .await?;
-        Ok(LoadedData::Full(events))
+        Ok(events)
     }
 
     async fn load_messages_enqueued(
@@ -795,39 +730,33 @@ impl BatchLoader {
             let from_block = format!("{:010}", from_block);
             let to_block = format!("{:010}", to_block + 1);
 
-            let mut args = PgArguments::default();
-            let mut query = format!(
-                "SELECT id from {}
-                WHERE id > $1 and id < $2",
-                log_table
-            );
-            let mut args_len = 2;
-            args.add(&from_block);
-            args.add(&to_block);
+            let mut params = Parameters::default();
+            let mut query = select(["id"])
+                .from(log_table)
+                .where_(format!("id > {}", params.add(&from_block)))
+                .where_(format!("id < {}", params.add(&to_block)));
             if selection.contract != "*" {
-                args_len += 1;
-                args.add(&selection.contract);
-                query.push_str(&format!(" AND event_contract = ${}", args_len));
+                query = query.where_(format!(
+                    "event_contract = {}",
+                    params.add(&selection.contract)
+                ));
             }
             if let Some(contract) = &log.contract {
-                args_len += 1;
-                args.add(contract);
-                query.push_str(&format!(" AND contract = ${}", args_len));
+                query = query.where_(format!("contract = {}", params.add(contract)));
             }
             for idx in 0..=3 {
                 if let Some(topics) = log.filter.get(idx) {
                     if !topics.is_empty() {
-                        args_len += 1;
-                        args.add(topics);
-                        query.push_str(&format!(" AND topic{} = ANY(${})", idx, args_len));
+                        query = query.where_(format!("topic{} = ANY({})", idx, params.add(topics)));
                     }
                 }
             }
-            query.push_str(" ORDER BY id");
-            let mut log_ids = sqlx::query_scalar_with::<_, String, _>(&query, args)
-                .fetch_all(&self.pool)
-                .observe_duration(log_table)
-                .await?;
+            query = query.order_by("id");
+            let mut log_ids =
+                sqlx::query_scalar_with::<_, String, _>(&query.to_string(), params.get())
+                    .fetch_all(&self.pool)
+                    .observe_duration(log_table)
+                    .await?;
             ids.append(&mut log_ids);
         }
         ids.sort();
@@ -893,19 +822,16 @@ impl BatchLoader {
             .map(|selection| selection.contract.clone())
             .collect::<Vec<String>>();
 
-        let mut query = "SELECT event_id
-            FROM contracts_contract_emitted
-            WHERE event_id > $1 AND event_id < $2"
-            .to_string();
-        let mut args = PgArguments::default();
-        args.add(&from_block);
-        args.add(&to_block);
+        let mut params = Parameters::default();
+        let mut query = select(["event_id"])
+            .from("contracts_contract_emitted")
+            .where_(format!("event_id > {}", params.add(&from_block)))
+            .where_(format!("event_id < {}", params.add(&to_block)));
         if !wildcard {
-            args.add(&contracts);
-            query.push_str(" AND contract = ANY($3)");
+            query = query.where_(format!("contract = ANY({})", params.add(&contracts)));
         }
-        query.push_str(" ORDER BY event_id");
-        let ids = sqlx::query_scalar_with::<_, String, _>(&query, args)
+        query = query.order_by("event_id");
+        let ids = sqlx::query_scalar_with::<_, String, _>(&query.to_string(), params.get())
             .fetch_all(&self.pool)
             .observe_duration("contracts_contract_emitted")
             .await?;
@@ -977,38 +903,34 @@ impl BatchLoader {
                 }
                 DatabaseType::Postgres => "frontier_evm_log",
             };
-            let mut args = PgArguments::default();
-            let mut query = format!(
-                "SELECT event_id
-                FROM {}
-                WHERE event_id > $1 AND event_id < $2",
-                table
-            );
-            let mut args_len = 2;
-            args.add(&from_block);
-            args.add(&to_block);
+            let mut params = Parameters::default();
+            let mut query = select(["event_id"])
+                .from(table)
+                .where_(format!("event_id > {}", params.add(&from_block)))
+                .where_(format!("event_id < {}", params.add(&to_block)));
             if !wildcard {
-                args_len += 1;
-                args.add(&contracts);
-                query.push_str(&format!(" AND contract = ANY(${}::char(42)[])", args_len));
+                query = query.where_(&format!(
+                    "contract = ANY({}::char(42)[])",
+                    params.add(&contracts),
+                ));
             }
             for index in 0..=3 {
                 if let Some(topics) = selections[0].filter.get(index) {
                     if !topics.is_empty() {
-                        args_len += 1;
-                        args.add(topics);
-                        query.push_str(&format!(
-                            " AND topic{} = ANY(${}::char(66)[])",
-                            index, args_len
+                        query = query.where_(format!(
+                            "topic{} = ANY({}::char(66)[])",
+                            index,
+                            params.add(topics)
                         ));
                     }
                 }
             }
-            query.push_str(" ORDER BY event_id");
-            let mut log_ids = sqlx::query_scalar_with::<_, String, _>(&query, args)
-                .fetch_all(&self.pool)
-                .observe_duration("frontier_evm_log")
-                .await?;
+            query = query.order_by("event_id");
+            let mut log_ids =
+                sqlx::query_scalar_with::<_, String, _>(&query.to_string(), params.get())
+                    .fetch_all(&self.pool)
+                    .observe_duration("frontier_evm_log")
+                    .await?;
             ids.append(&mut log_ids);
         }
         ids.sort();
@@ -1080,28 +1002,21 @@ impl BatchLoader {
             let from_block = format!("{:010}", from_block);
             let to_block = format!("{:010}", to_block + 1);
 
-            let mut args = PgArguments::default();
-            let mut query = String::from(
-                "SELECT call_id
-                FROM frontier_ethereum_transaction
-                WHERE call_id > $1 AND call_id < $2",
-            );
-            let mut args_len = 2;
-            args.add(&from_block);
-            args.add(&to_block);
+            let mut params = Parameters::default();
+            let mut query = select(["call_id"])
+                .from("frontier_ethereum_transaction")
+                .where_(format!("call_id > {}", params.add(&from_block)))
+                .where_(format!("call_id < {}", params.add(&to_block)));
             if selection.contract != "*" {
-                args_len += 1;
-                args.add(&selection.contract);
-                query.push_str(&format!(" AND contract = ${}", args_len));
+                query = query.where_(format!("contract = {}", params.add(&selection.contract)));
             }
             if let Some(sighash) = &selection.sighash {
-                args_len += 1;
-                args.add(sighash);
-                query.push_str(&format!(" AND sighash = ${}", args_len));
+                query = query.where_(format!("sighash = {}", params.add(sighash)));
             }
-            query.push_str(" ORDER BY call_id");
+            query = query.order_by("call_id");
 
-            let mut selection_ids = sqlx::query_scalar_with::<_, String, _>(&query, args)
+            let sql = query.to_string();
+            let mut selection_ids = sqlx::query_scalar_with::<_, String, _>(&sql, params.get())
                 .fetch_all(&self.pool)
                 .observe_duration("frontier_ethereum_transaction")
                 .await?;
@@ -1184,19 +1099,16 @@ impl BatchLoader {
             .map(|selection| selection.contract.clone())
             .collect::<Vec<String>>();
 
-        let mut query = "SELECT event_id
-            FROM frontier_ethereum_executed
-            WHERE event_id > $1 AND event_id < $2"
-            .to_string();
-        let mut args = PgArguments::default();
-        args.add(&from_block);
-        args.add(&to_block);
+        let mut params = Parameters::default();
+        let mut query = select(["event_id"])
+            .from("frontier_ethereum_executed")
+            .where_(format!("event_id > {}", params.add(&from_block)))
+            .where_(format!("event_id < {}", params.add(&to_block)));
         if !wildcard {
-            args.add(&contracts);
-            query.push_str(" AND contract = ANY($3)");
+            query = query.where_(format!("contract = ANY({})", params.add(&contracts)));
         }
-        query.push_str(" ORDER BY event_id");
-        let ids = sqlx::query_scalar_with::<_, String, _>(&query, args)
+        query = query.order_by("event_id");
+        let ids = sqlx::query_scalar_with::<_, String, _>(&query.to_string(), params.get())
             .fetch_all(&self.pool)
             .observe_duration("frontier_ethereum_executed")
             .await?;
@@ -1276,56 +1188,6 @@ impl BatchLoader {
         Ok(extrinsics)
     }
 
-    async fn get_safe_to_block(
-        &self,
-        from_block: i32,
-        to_block: i32,
-        selections: &Selections,
-    ) -> Result<i32, Error> {
-        let mut blocks = vec![];
-
-        let block_only = true;
-        match self
-            .load_calls(from_block, to_block, &selections.call, block_only)
-            .await?
-        {
-            LoadedData::Preload(mut call_blocks) => blocks.append(&mut call_blocks),
-            _ => {}
-        };
-        match self
-            .load_events(from_block, to_block, &selections.event, block_only)
-            .await?
-        {
-            LoadedData::Preload(mut event_blocks) => blocks.append(&mut event_blocks),
-            _ => {}
-        };
-
-        blocks.sort();
-        let mut count = 0;
-        let mut last_block: Option<i32> = None;
-        blocks.retain(|block| {
-            if count > 1000 {
-                if last_block.unwrap() == *block {
-                    count += 1;
-                    last_block = Some(*block);
-                    return true;
-                } else {
-                    return false;
-                }
-            } else {
-                count += 1;
-                last_block = Some(*block);
-                return true;
-            }
-        });
-
-        if !blocks.is_empty() {
-            return Ok(*blocks.last().unwrap());
-        }
-
-        Ok(to_block)
-    }
-
     fn create_batch(
         &self,
         blocks: Vec<BlockHeader>,
@@ -1383,7 +1245,7 @@ impl BatchLoader {
                     call: CallFields::from_parent(&data.call.parent),
                     extrinsic: ExtrinsicFields::new(false),
                 };
-                self.visit_parent_call(&parent, &parent_fields, call_lookup, call_fields);
+                self.visit_parent_call(parent, &parent_fields, call_lookup, call_fields);
                 if let Some(fields) = call_fields.get_mut(&parent.id) {
                     fields.call.merge(&parent_fields.call);
                     fields.extrinsic.merge(&parent_fields.extrinsic);

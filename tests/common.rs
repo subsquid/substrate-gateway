@@ -66,14 +66,14 @@ pub struct Batch {
 }
 
 #[derive(Deserialize)]
-pub struct NewBatch {
+pub struct BatchData {
     pub data: Vec<Batch>,
     pub next_block: Option<i32>,
 }
 
 #[derive(Deserialize)]
-pub struct BatchResponse<T> {
-    pub batch: T,
+pub struct BatchResponse {
+    pub batch: BatchData,
 }
 
 #[derive(Deserialize)]
@@ -117,24 +117,6 @@ impl Client {
         Client(reqwest::Client::new())
     }
 
-    pub async fn limited_batch(&self, args: Value) -> Batch {
-        let json = serde_json::json!({
-            "query": format!("{{ batch({}) {{ calls, events, extrinsics }} }}", args_to_string(&args, true)),
-        });
-        let response = self
-            .0
-            .post("http://0.0.0.0:8000/graphql")
-            .json(&json)
-            .send()
-            .await
-            .unwrap();
-        let text = response.text().await.unwrap();
-        match serde_json::from_str::<GatewayResponse<BatchResponse<Vec<Batch>>>>(&text) {
-            Ok(mut response) => response.data.batch.remove(0),
-            Err(_) => panic!("Unexpected response body: {}", text),
-        }
-    }
-
     pub async fn batch(&self, args: Value) -> Batch {
         let json = serde_json::json!({
             "query": format!("{{ batch({}) {{ calls, events, extrinsics }} }}", args_to_string(&args, true)),
@@ -147,7 +129,7 @@ impl Client {
             .await
             .unwrap();
         let text = response.text().await.unwrap();
-        match serde_json::from_str::<GatewayResponse<BatchResponse<NewBatch>>>(&text) {
+        match serde_json::from_str::<GatewayResponse<BatchResponse>>(&text) {
             Ok(mut response) => response.data.batch.data.remove(0),
             Err(_) => panic!("Unexpected response body: {}", text),
         }

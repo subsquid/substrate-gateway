@@ -1,7 +1,6 @@
 use super::selection::{
-    AcalaEvmEventSelection, CallSelection, ContractsEventSelection, EthExecutedSelection,
-    EthTransactSelection, EventSelection, EvmLogSelection, GearMessageEnqueuedSelection,
-    GearUserMessageSentSelection,
+    AcalaEvmEventSelection, CallSelection, ContractsEventSelection, EthTransactSelection,
+    EventSelection, EvmLogSelection, GearMessageEnqueuedSelection, GearUserMessageSentSelection,
 };
 use crate::entities::{Batch, Metadata, Status};
 use crate::error::Error;
@@ -25,7 +24,6 @@ pub struct Selections {
     pub event: Vec<EventSelection>,
     pub evm_log: Vec<EvmLogSelection>,
     pub eth_transact: Vec<EthTransactSelection>,
-    pub eth_executed: Vec<EthExecutedSelection>,
     pub contracts_event: Vec<ContractsEventSelection>,
     pub gear_message_enqueued: Vec<GearMessageEnqueuedSelection>,
     pub gear_user_message_sent: Vec<GearUserMessageSentSelection>,

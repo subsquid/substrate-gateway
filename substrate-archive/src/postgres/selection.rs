@@ -1,8 +1,8 @@
 use crate::entities::{Call, Event, EvmLog};
 use crate::selection::{
     AcalaEvmEventSelection, AcalaEvmLog, CallSelection, ContractsEventSelection,
-    EthExecutedSelection, EthTransactSelection, EventSelection, EvmLogSelection,
-    GearMessageEnqueuedSelection, GearUserMessageSentSelection,
+    EthTransactSelection, EventSelection, EvmLogSelection, GearMessageEnqueuedSelection,
+    GearUserMessageSentSelection,
 };
 use serde_json::Value;
 
@@ -141,24 +141,6 @@ impl EthTransactSelection {
             }
         }
         None
-    }
-}
-
-impl EthExecutedSelection {
-    pub fn r#match(&self, event: &Event) -> bool {
-        if let Some(value) = &event.args {
-            if let Some(value) = value.get(1) {
-                if let Some(contract) = value.as_str() {
-                    return self.contract == WILDCARD || contract == self.contract;
-                }
-            }
-            if let Some(value) = value.get("to") {
-                if let Some(contract) = value.as_str() {
-                    return self.contract == WILDCARD || contract == self.contract;
-                }
-            }
-        }
-        false
     }
 }
 

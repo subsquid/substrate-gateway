@@ -99,12 +99,6 @@ CREATE TABLE frontier_ethereum_transaction (
 );
 
 
-CREATE TABLE frontier_ethereum_executed (
-    event_id varchar(23) primary key references event,
-    contract char(42) not null
-);
-
-
 CREATE TABLE acala_evm_executed (
     event_id char(23) primary key references event,
     contract char(42) not null

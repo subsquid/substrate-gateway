@@ -127,7 +127,9 @@ async fn test_ethereum_transactions() {
         }))
         .await;
     let call = &batch.calls[0];
+    let executed = &batch.events[0];
     assert!(call.id == "0000569006-000018-5e412");
+    assert!(executed.id == "0000569006-000085-5e412");
 }
 
 #[actix_web::test]
@@ -143,22 +145,9 @@ async fn test_ethereum_transactions_wildcard_search() {
         }))
         .await;
     let call = &batch.calls[0];
+    let executed = &batch.events[0];
     assert!(call.id == "0000569006-000018-5e412");
-}
-
-#[actix_web::test]
-async fn test_ethereum_executed() {
-    launch_gateway();
-    let client = Client::new();
-    let batch = client
-        .batch(json!({
-            "ethereumExecuted": [{
-                "contract": "0x0000000000000000000000000000000000000000"
-            }]
-        }))
-        .await;
-    let event = &batch.events[0];
-    assert!(event.id == "0000569006-000085-5e412");
+    assert!(executed.id == "0000569006-000085-5e412");
 }
 
 #[actix_web::test]

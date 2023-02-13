@@ -76,12 +76,6 @@ pub struct EthTransactSelection {
 }
 
 #[derive(Debug, Clone)]
-pub struct EthExecutedSelection {
-    pub contract: String,
-    pub data: EventDataSelection,
-}
-
-#[derive(Debug, Clone)]
 pub struct ContractsEventSelection {
     pub contract: String,
     pub data: EventDataSelection,

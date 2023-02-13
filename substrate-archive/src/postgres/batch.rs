@@ -8,8 +8,8 @@ use crate::fields::{CallFields, EventFields, EvmLogFields, ExtrinsicFields};
 use crate::metrics::ObserverExt;
 use crate::selection::{
     AcalaEvmEventSelection, AcalaEvmLog, CallDataSelection, CallSelection, ContractsEventSelection,
-    EthExecutedSelection, EthTransactSelection, EventDataSelection, EventSelection,
-    EvmLogSelection, GearMessageEnqueuedSelection, GearUserMessageSentSelection,
+    EthTransactSelection, EventDataSelection, EventSelection, EvmLogSelection,
+    GearMessageEnqueuedSelection, GearUserMessageSentSelection,
 };
 use crate::sql::{select, Parameters};
 use sqlx::postgres::Postgres;
@@ -64,11 +64,8 @@ impl BatchLoader {
         let evm_logs = self
             .load_evm_logs(from_block, to_block, &selections.evm_log)
             .await?;
-        let mut eth_transactions = self
+        let (mut eth_transactions, mut eth_executed) = self
             .load_eth_transactions(from_block, to_block, &selections.eth_transact)
-            .await?;
-        let mut eth_executed = self
-            .load_eth_executed(from_block, to_block, &selections.eth_executed)
             .await?;
         let mut contracts_events = self
             .load_contracts_events(from_block, to_block, &selections.contracts_event)
@@ -111,9 +108,6 @@ impl BatchLoader {
                 .iter()
                 .for_each(|log| ids.push(log.block_id.clone()));
             eth_transactions
-                .iter()
-                .for_each(|call| ids.push(call.block_id.clone()));
-            eth_executed
                 .iter()
                 .for_each(|call| ids.push(call.block_id.clone()));
             contracts_events
@@ -276,11 +270,11 @@ impl BatchLoader {
         }
         events.append(&mut contracts_events);
         for event in &eth_executed {
-            for selection in &selections.eth_executed {
-                if selection.r#match(event) {
-                    process_event(event, &selection.data);
-                }
-            }
+            let f = EventFields::new(true);
+            event_fields
+                .entry(event.id.clone())
+                .and_modify(|fields| fields.merge(&f))
+                .or_insert_with(|| f);
         }
         events.append(&mut eth_executed);
 
@@ -993,9 +987,9 @@ impl BatchLoader {
         from_block: i32,
         to_block: i32,
         selections: &Vec<EthTransactSelection>,
-    ) -> Result<Vec<Call>, Error> {
+    ) -> Result<(Vec<Call>, Vec<Event>), Error> {
         if selections.is_empty() {
-            return Ok(Vec::new());
+            return Ok((Vec::new(), Vec::new()));
         }
         let mut ids = Vec::new();
         for selection in selections {
@@ -1042,6 +1036,28 @@ impl BatchLoader {
             .observe_duration("call")
             .await?;
 
+        let events = if ids.is_empty() {
+            vec![]
+        } else {
+            let query = "SELECT
+                    id,
+                    block_id,
+                    index_in_block::int8,
+                    phase,
+                    extrinsic_id,
+                    call_id,
+                    name,
+                    args,
+                    pos::int8
+                FROM event
+                WHERE call_id = ANY($1::char(30)[]) AND name = 'Ethereum.Executed'";
+            sqlx::query_as::<_, Event>(query)
+                .bind(&ids)
+                .fetch_all(&self.pool)
+                .observe_duration("event")
+                .await?
+        };
+
         let mut parents_ids: Vec<String> = calls
             .iter()
             .filter_map(|call| call.parent_id.clone())
@@ -1078,47 +1094,7 @@ impl BatchLoader {
             parents_ids.sort();
             parents_ids.dedup();
         }
-        Ok(calls)
-    }
-
-    async fn load_eth_executed(
-        &self,
-        from_block: i32,
-        to_block: i32,
-        selections: &Vec<EthExecutedSelection>,
-    ) -> Result<Vec<Event>, Error> {
-        if selections.is_empty() {
-            return Ok(Vec::new());
-        }
-
-        let from_block = format!("{:010}", from_block);
-        let to_block = format!("{:010}", to_block + 1);
-        let wildcard = selections.iter().any(|selection| selection.contract == "*");
-        let contracts = selections
-            .iter()
-            .map(|selection| selection.contract.clone())
-            .collect::<Vec<String>>();
-
-        let mut params = Parameters::default();
-        let mut query = select(["event_id"])
-            .from("frontier_ethereum_executed")
-            .where_(format!("event_id > {}", params.add(&from_block)))
-            .where_(format!("event_id < {}", params.add(&to_block)));
-        if !wildcard {
-            query = query.where_(format!("contract = ANY({})", params.add(&contracts)));
-        }
-        query = query.order_by("event_id");
-        let ids = sqlx::query_scalar_with::<_, String, _>(&query.to_string(), params.get())
-            .fetch_all(&self.pool)
-            .observe_duration("frontier_ethereum_executed")
-            .await?;
-
-        let events = sqlx::query_as::<_, Event>(EVENTS_BY_ID_QUERY)
-            .bind(&ids)
-            .fetch_all(&self.pool)
-            .observe_duration("event")
-            .await?;
-        Ok(events)
+        Ok((calls, events))
     }
 
     async fn load_blocks(&self, from_block: i32, to_block: i32) -> Result<Vec<BlockHeader>, Error> {

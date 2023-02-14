@@ -2,6 +2,17 @@
 
 All notable changes to this project will be documented in this file.
 
+## [2.6.1] - 2023-02-13
+
+### Bug Fixes
+
+- Remove ethereumExecuted api and expand ethereumTransactions one
+
+### Miscellaneous Tasks
+
+- Use sql builder for some queries
+- Improve tests
+
 ## [2.6.0] - 2023-02-10
 
 ### Features

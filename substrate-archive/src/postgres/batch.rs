@@ -565,11 +565,17 @@ impl BatchLoader {
         let wildcard = selections.iter().any(|selection| selection.name == "*");
         let names = selections
             .iter()
-            .map(|selection| selection.name.clone())
-            .collect::<Vec<String>>();
+            .map(|selection| format!("'{}'", selection.name))
+            .collect::<Vec<String>>()
+            .join(", ");
 
         let from_block = format!("{:010}", from_block);
         let to_block = format!("{:010}", to_block + 1);
+
+        let table = match self.database_type {
+            DatabaseType::Cockroach => "event@idx_event__name__block",
+            DatabaseType::Postgres => "event",
+        };
 
         let mut params = Parameters::default();
         let mut query = select([
@@ -583,11 +589,11 @@ impl BatchLoader {
             "args",
             "pos::int8",
         ])
-        .from("event")
+        .from(table)
         .where_(format!("block_id > {}", params.add(&from_block)))
         .where_(format!("block_id < {}", params.add(&to_block)));
         if !wildcard {
-            query = query.where_(format!("name = ANY({})", params.add(&names)));
+            query = query.where_(format!("name IN ({})", &names));
         }
         let events = sqlx::query_as_with::<_, Event, _>(&query.to_string(), params.get())
             .fetch_all(&self.pool)

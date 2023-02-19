@@ -2,6 +2,12 @@
 
 All notable changes to this project will be documented in this file.
 
+## [2.6.2] - 2023-02-19
+
+### Bug Fixes
+
+- Force index for event table if db is cockroach
+
 ## [2.6.1] - 2023-02-13
 
 ### Bug Fixes

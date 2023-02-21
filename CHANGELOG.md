@@ -2,6 +2,12 @@
 
 All notable changes to this project will be documented in this file.
 
+## [2.6.3] - 2023-02-21
+
+### Bug Fixes
+
+- Performace downgrade for wildcard search
+
 ## [2.6.2] - 2023-02-19
 
 ### Bug Fixes

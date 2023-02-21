@@ -573,7 +573,13 @@ impl BatchLoader {
         let to_block = format!("{:010}", to_block + 1);
 
         let table = match self.database_type {
-            DatabaseType::Cockroach => "event@idx_event__name__block",
+            DatabaseType::Cockroach => {
+                if wildcard {
+                    "event"
+                } else {
+                    "event@idx_event__name__block"
+                }
+            }
             DatabaseType::Postgres => "event",
         };
 

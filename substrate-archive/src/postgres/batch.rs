@@ -453,8 +453,8 @@ impl BatchLoader {
             "pos::int8",
         ])
         .from("call")
-        .where_(format!("block_id > {}", params.add(&from_block)))
-        .where_(format!("block_id < {}", params.add(&to_block)));
+        .where_(format!("block_id > {}::char(10)", params.add(&from_block)))
+        .where_(format!("block_id < {}::char(10)", params.add(&to_block)));
         if !wildcard {
             query = query.where_(format!("name = ANY({})", params.add(&names)));
         }
@@ -596,8 +596,8 @@ impl BatchLoader {
             "pos::int8",
         ])
         .from(table)
-        .where_(format!("block_id > {}", params.add(&from_block)))
-        .where_(format!("block_id < {}", params.add(&to_block)));
+        .where_(format!("block_id > {}::char(10)", params.add(&from_block)))
+        .where_(format!("block_id < {}::char(10)", params.add(&to_block)));
         if !wildcard {
             query = query.where_(format!("name IN ({})", &names));
         }

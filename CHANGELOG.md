@@ -2,6 +2,12 @@
 
 All notable changes to this project will be documented in this file.
 
+## [2.6.4] - 2023-03-08
+
+### Bug Fixes
+
+- Annotate types to please postgres planner
+
 ## [2.6.3] - 2023-02-21
 
 ### Bug Fixes

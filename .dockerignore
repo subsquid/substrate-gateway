@@ -1,5 +1,4 @@
 /target
 /tests
 /.github
-.env
-.env.example
+/.vscode

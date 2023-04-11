@@ -2,7 +2,7 @@ use super::{batch::BatchLoader, BatchResponse};
 use crate::archive::Selections;
 use crate::entities::Batch;
 use crate::error::Error;
-use std::cmp::{max, min};
+use std::cmp::min;
 use std::time::{Duration, Instant};
 use tracing::debug;
 
@@ -48,7 +48,6 @@ impl PartialBatchLoader {
         let mut from_block = options.from_block;
         let mut range_width = scan_start_value;
         let mut to_block = min(from_block + range_width - 1, options.to_block);
-        let mut total_range = 0;
 
         loop {
             debug!("scanning from {from_block} to {to_block}");
@@ -72,8 +71,6 @@ impl PartialBatchLoader {
                 });
             }
 
-            total_range += range_width;
-
             if size > 1024 * 1024 {
                 break;
             }
@@ -86,18 +83,9 @@ impl PartialBatchLoader {
                 break;
             }
 
-            range_width = if len == 0 {
-                min(range_width * 10, scan_max_value)
-            } else {
-                let total_blocks = i32::try_from(batch.len()).unwrap();
-                min(
-                    max(
-                        (total_range / total_blocks) * (scan_start_value - len),
-                        scan_start_value,
-                    ),
-                    scan_max_value,
-                )
-            };
+            if len < (scan_start_value % 2) {
+                range_width = min(range_width * 2, scan_max_value);
+            }
 
             from_block = to_block + 1;
             to_block = min(from_block + range_width - 1, options.to_block);

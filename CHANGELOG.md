@@ -2,6 +2,16 @@
 
 All notable changes to this project will be documented in this file.
 
+## [2.6.5] - 2023-04-11
+
+### Bug Fixes
+
+- Simplify block scanning algorithm
+
+### Miscellaneous Tasks
+
+- Improve README.md
+
 ## [2.6.4] - 2023-03-08
 
 ### Bug Fixes

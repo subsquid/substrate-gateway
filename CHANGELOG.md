@@ -2,6 +2,12 @@
 
 All notable changes to this project will be documented in this file.
 
+## [2.6.7] - 2023-04-13
+
+### Bug Fixes
+
+- Revert simplified block scanning algorithm
+
 ## [2.6.6] - 2023-04-13
 
 ### Bug Fixes

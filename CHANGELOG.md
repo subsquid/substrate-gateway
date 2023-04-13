@@ -2,6 +2,12 @@
 
 All notable changes to this project will be documented in this file.
 
+## [2.6.6] - 2023-04-13
+
+### Bug Fixes
+
+- Force cockroach to use specific index for ethereum transactions
+
 ## [2.6.5] - 2023-04-11
 
 ### Bug Fixes

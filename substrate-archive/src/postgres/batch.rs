@@ -1008,9 +1008,20 @@ impl BatchLoader {
             let from_block = format!("{:010}", from_block);
             let to_block = format!("{:010}", to_block + 1);
 
+            let table = match self.database_type {
+                DatabaseType::Cockroach => {
+                    if selection.sighash.is_some() && selection.contract != "*" {
+                        "frontier_ethereum_transaction@IDX_frontier_ethereum_transaction__contract__sighash__call"
+                    } else {
+                        "frontier_ethereum_transaction"
+                    }
+                }
+                DatabaseType::Postgres => "frontier_ethereum_transaction",
+            };
+
             let mut params = Parameters::default();
             let mut query = select(["call_id"])
-                .from("frontier_ethereum_transaction")
+                .from(table)
                 .where_(format!("call_id > {}", params.add(&from_block)))
                 .where_(format!("call_id < {}", params.add(&to_block)));
             if selection.contract != "*" {

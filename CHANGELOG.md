@@ -2,6 +2,12 @@
 
 All notable changes to this project will be documented in this file.
 
+## [2.7.0] - 2023-07-24
+
+### Features
+
+- Expose scan_time_limit parameter
+
 ## [2.6.7] - 2023-04-13
 
 ### Bug Fixes

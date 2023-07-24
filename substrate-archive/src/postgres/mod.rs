@@ -26,6 +26,7 @@ pub struct PostgresArchive {
     database_type: DatabaseType,
     scan_start_value: u16,
     scan_max_value: u32,
+    scan_time_limit: u16,
 }
 
 #[async_trait::async_trait]
@@ -36,6 +37,7 @@ impl ArchiveService for PostgresArchive {
             self.database_type.clone(),
             self.scan_start_value,
             self.scan_max_value,
+            self.scan_time_limit,
         );
         controller.load(options).await
     }
@@ -78,12 +80,14 @@ impl PostgresArchive {
         database_type: DatabaseType,
         scan_start_value: u16,
         scan_max_value: u32,
+        scan_time_limit: u16,
     ) -> PostgresArchive {
         PostgresArchive {
             pool,
             database_type,
             scan_start_value,
             scan_max_value,
+            scan_time_limit,
         }
     }
 }

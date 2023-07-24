@@ -33,6 +33,10 @@ struct Args {
     #[clap(long, default_value_t = 100_000)]
     scan_max_value: u32,
 
+    /// Time limit (ms) for batch collection procedure
+    #[clap(long, default_value_t = 5000)]
+    scan_time_limit: u16,
+
     /// EVM pallet support
     #[clap(long)]
     evm_support: bool,
@@ -79,6 +83,7 @@ async fn main() -> std::io::Result<()> {
         .acala_support(args.acala_support)
         .scan_start_value(args.scan_start_value)
         .scan_max_value(args.scan_max_value)
+        .scan_time_limit(args.scan_time_limit)
         .run()
         .await
 }

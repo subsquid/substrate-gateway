@@ -21,6 +21,7 @@ pub struct PartialBatchLoader {
     loader: BatchLoader,
     scan_start_value: u16,
     scan_max_value: u32,
+    scan_time_limit: u16,
 }
 
 impl PartialBatchLoader {
@@ -28,11 +29,13 @@ impl PartialBatchLoader {
         loader: BatchLoader,
         scan_start_value: u16,
         scan_max_value: u32,
+        scan_time_limit: u16,
     ) -> PartialBatchLoader {
         PartialBatchLoader {
             loader,
             scan_start_value,
             scan_max_value,
+            scan_time_limit,
         }
     }
 
@@ -40,7 +43,7 @@ impl PartialBatchLoader {
         let mut batch = vec![];
 
         let start_time = Instant::now();
-        let timeout = Duration::from_secs(5);
+        let timeout = Duration::from_millis(self.scan_time_limit.into());
         let scan_start_value: i32 = self.scan_start_value.into();
         let scan_max_value: i32 = self.scan_max_value.try_into().unwrap();
         let mut size = 0;

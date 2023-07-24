@@ -11,6 +11,7 @@ pub struct BatchController {
     database_type: DatabaseType,
     scan_start_value: u16,
     scan_max_value: u32,
+    scan_time_limit: u16,
 }
 
 impl BatchController {
@@ -19,12 +20,14 @@ impl BatchController {
         database_type: DatabaseType,
         scan_start_value: u16,
         scan_max_value: u32,
+        scan_time_limit: u16,
     ) -> BatchController {
         BatchController {
             pool,
             database_type,
             scan_start_value,
             scan_max_value,
+            scan_time_limit,
         }
     }
 
@@ -63,8 +66,12 @@ impl BatchController {
             }
             None => {
                 let loader = BatchLoader::new(self.pool.clone(), self.database_type.clone());
-                let strategy =
-                    PartialBatchLoader::new(loader, self.scan_start_value, self.scan_max_value);
+                let strategy = PartialBatchLoader::new(
+                    loader,
+                    self.scan_start_value,
+                    self.scan_max_value,
+                    self.scan_time_limit,
+                );
                 let options = PartialOptions {
                     from_block: options.from_block,
                     to_block,

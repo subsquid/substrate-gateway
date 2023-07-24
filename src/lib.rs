@@ -14,6 +14,7 @@ pub struct SubstrateGateway {
     database_type: DatabaseType,
     scan_start_value: u16,
     scan_max_value: u32,
+    scan_time_limit: u16,
     evm_support: bool,
     acala_support: bool,
     contracts_support: bool,
@@ -27,6 +28,7 @@ impl SubstrateGateway {
             database_type,
             scan_start_value: 50,
             scan_max_value: 100_000,
+            scan_time_limit: 5000,
             evm_support: false,
             acala_support: false,
             contracts_support: false,
@@ -64,12 +66,18 @@ impl SubstrateGateway {
         self
     }
 
+    pub fn scan_time_limit(mut self, value: u16) -> Self {
+        self.scan_time_limit = value;
+        self
+    }
+
     pub async fn run(&self) -> std::io::Result<()> {
         let archive = Box::new(PostgresArchive::new(
             self.pool.clone(),
             self.database_type.clone(),
             self.scan_start_value,
             self.scan_max_value,
+            self.scan_time_limit,
         ));
         let query = QueryRoot { archive };
         let schema = Schema::build(query, EmptyMutation, EmptySubscription)
